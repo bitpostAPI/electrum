@@ -1281,6 +1281,8 @@ def format_short_channel_id(short_channel_id: Optional[bytes]):
         + 'x' + str(int.from_bytes(short_channel_id[6:], 'big'))
 
 
+TRAMPOLINE_CHANNEL_ID = ShortChannelID(bytes.fromhex("ffffffffffffffff"))
+
 @attr.s(frozen=True)
 class UpdateAddHtlc:
     amount_msat = attr.ib(type=int, kw_only=True)
