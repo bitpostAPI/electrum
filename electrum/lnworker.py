@@ -203,6 +203,7 @@ class LNWorker(Logger, NetworkRetryManager[LNPeerAddr]):
         self.features |= LnFeatures.OPTION_STATIC_REMOTEKEY_OPT
         self.features |= LnFeatures.VAR_ONION_OPT
         self.features |= LnFeatures.PAYMENT_SECRET_OPT
+        #self.features |= LnFeatures.TRAMPOLINE_ROUTING_OPT
 
         util.register_callback(self.on_proxy_changed, ['proxy_set'])
 
@@ -1114,9 +1115,11 @@ class LNWallet(LNWorker):
         amount_msat = decoded_invoice.get_amount_msat()
         invoice_pubkey = decoded_invoice.pubkey.serialize()
         invoice_features = decoded_invoice.get_tag('9') or 0
-        print('invoice features', invoice_features)
+        supports_trampoline = bool(invoice_features & LnFeatures.OPTION_TRAMPOLINE_ROUTING_OPT)
+        print('recipient supports trampoline:', supports_trampoline)
 
         trampoline = TRAMPOLINE_NODES[0]
+        params = TRAMPOLINE_FEES[1] #[attempt]
         trampoline_node_id = trampoline.pubkey
 
         channels = self.channels_for_peer(trampoline_node_id)
@@ -1127,7 +1130,7 @@ class LNWallet(LNWorker):
             break
         # assume direct channel to trampoline        
         trampoline_features = self._peers[trampoline_node_id].features
-        #hop to trampoline
+        # hop to trampoline
         route = [
             RouteEdge(
                 node_id=trampoline_node_id,
@@ -1138,7 +1141,6 @@ class LNWallet(LNWorker):
                 node_features=trampoline_features)
         ]
         # trampoline onion for Bob
-        params = TRAMPOLINE_FEES[1] #[attempt]
         route.append(
             RouteEdge(
                 node_id=trampoline_node_id,
@@ -1158,18 +1160,44 @@ class LNWallet(LNWorker):
                 node_features=trampoline_features)
         )
         route[-1].outgoing_node_id = invoice_pubkey
-        route[-1].invoice_features = invoice_features
-        route[-1].invoice_routing_info = b''
-        #fake edge so that we do not have EOF
-        route.append(
-            RouteEdge(
-                node_id=trampoline_node_id,
-                short_channel_id=0,
-                fee_base_msat=0,
-                fee_proportional_millionths=0,
-                cltv_expiry_delta=0,
-                node_features=trampoline_features)
-        )
+        if not supports_trampoline:
+            route[-1].invoice_features = invoice_features
+            route[-1].invoice_routing_info = b''
+        else:
+            route[-1].invoice_features = None
+        # legacy recipient needs a fake edge
+        if not supports_trampoline:
+            route.append(
+                RouteEdge(
+                    node_id=trampoline_node_id,
+                    short_channel_id=0,
+                    fee_base_msat=0,
+                    fee_proportional_millionths=0,
+                    cltv_expiry_delta=0,
+                    node_features=trampoline_features)
+            )
+        else:
+            # trampoline onion for recipient
+            route.append(
+                RouteEdge(
+                    node_id=invoice_pubkey,
+                    short_channel_id=TRAMPOLINE_CHANNEL_ID,
+                    fee_base_msat=0,
+                    fee_proportional_millionths=0,
+                    cltv_expiry_delta=0,
+                    node_features=invoice_features)
+            )
+            route.append(
+                RouteEdge(
+                    node_id=invoice_pubkey,
+                    short_channel_id=0,
+                    fee_base_msat=0,
+                    fee_proportional_millionths=0,
+                    cltv_expiry_delta=0,
+                    node_features=invoice_features)
+            )
+            route[-1].outgoing_node_id = None
+            route[-1].invoice_features = None
         return route
 
     @profiler

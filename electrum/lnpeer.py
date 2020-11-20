@@ -1119,9 +1119,13 @@ class Peer(Logger):
                 self.logger.info(f'trampoline hop at position {i}')
                 # create trampoline onion
                 #hops_data[i].payload.pop('short_channel_id')
-                hops_data[i+1].payload["outgoing_node_id"] = {"outgoing_node_id":route[i+1].outgoing_node_id}
-                hops_data[i+1].payload["invoice_features"] = {"invoice_features":route[i+1].invoice_features}
-                #hops_data[i+1].payload["invoice_routing_info"] = {"invoice_routing_info":route[i+1].invoice_routing_info}
+                outgoing_node_id = route[i+1].outgoing_node_id
+                invoice_features = route[i+1].invoice_features
+                if outgoing_node_id:
+                    hops_data[i+1].payload["outgoing_node_id"] = {"outgoing_node_id":outgoing_node_id}
+                if invoice_features:
+                    hops_data[i+1].payload["invoice_features"] = {"invoice_features":invoice_features}
+                    #hops_data[i+1].payload["invoice_routing_info"] = {"invoice_routing_info":route[i+1].invoice_routing_info}
                 print('inner onion', hops_data[i+1:])
                 trampoline_session_key = os.urandom(32)
                 trampoline_onion = new_onion_packet(payment_path_pubkeys[i+1:], trampoline_session_key, hops_data[i+1:], associated_data=payment_hash, trampoline=True)
