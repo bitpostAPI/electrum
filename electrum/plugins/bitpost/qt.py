@@ -21,12 +21,18 @@ from datetime import datetime
                                   
                                   
 class Plugin(BasePlugin):
+
+    default_max_fee = 1000
+    default_num_txs = 50
+    default_target_mins = 20
+
+
     def __init__(self, parent, config, name):
         BasePlugin.__init__(self, parent, config, name)
         self.wallets=set()
-        self.max_fees=self.config.get('bitpost_max_fees', 10000)
-        self.num_txs=self.config.get('bitpost_num_txs', 50)
-        self.target_intervall=self.config.get('bitpost_target_intervall', 10)
+        self.max_fees=self.config.get('bitpost_max_fees', self.default_max_fee)
+        self.num_txs=self.config.get('bitpost_num_txs', self.default_num_txs)
+        self.target_intervall=self.config.get('bitpost_target_intervall', self.default_target_mins)
 
         
     def requires_settings(self):
@@ -229,6 +235,10 @@ class Plugin(BasePlugin):
     @hook
     def load_wallet(self, wallet, main_window):
         self.wallet=wallet
+
+        self.config.set_key('bitpost_max_fees', self.default_max_fee)
+        self.config.set_key('bitpost_num_txs', self.default_num_txs)
+        self.config.set_key('bitpost_target_intervall', self.default_target_mins)
     
     @hook
     def close_wallet(self, wallet):
