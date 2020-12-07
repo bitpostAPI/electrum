@@ -2,7 +2,7 @@
 from electrum.plugin import BasePlugin, hook
 from electrum.gui.qt.util import (EnterButton, Buttons, CloseButton, OkButton, WindowModalDialog, get_parent_main_window)
 from electrum.gui.qt.main_window import ElectrumWindow
-from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QInputDialog, QPushButton, QCheckBox,QLineEdit)
+from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QInputDialog, QPushButton, QCheckBox,QLineEdit, QComboBox)
 from functools import partial
 from electrum.i18n import _
 from .confirm_tx_dialog import ConfirmTxDialog
@@ -26,13 +26,12 @@ class Plugin(BasePlugin):
     default_num_txs = 50
     default_target_mins = 20
 
-
     def __init__(self, parent, config, name):
         BasePlugin.__init__(self, parent, config, name)
         self.wallets=set()
         self.max_fees=self.config.get('bitpost_max_fees', self.default_max_fee)
         self.num_txs=self.config.get('bitpost_num_txs', self.default_num_txs)
-        self.target_intervall=self.config.get('bitpost_target_intervall', self.default_target_mins)
+        self.target_interval=self.config.get('bitpost_target_interval', self.default_target_mins)
 
         
     def requires_settings(self):
@@ -46,31 +45,52 @@ class Plugin(BasePlugin):
 
     def settings_dialog(self, window):
         # Return a settings dialog.
+        main_window = get_parent_main_window(window)
+
         d = WindowModalDialog(window, _("Bitpost settings"))
         vbox = QVBoxLayout(d)
         
         d.setMinimumSize(500, 200)
+
+        hbox_maxfee = QHBoxLayout()
+        hbox_maxfee.addWidget(QLabel("Default max fee to use"))
+        max_fees_e = QLineEdit()
+        max_fees_e.setText(str(self.max_fees))
+        hbox_maxfee.addWidget(max_fees_e)
+
+        fee_combo = QComboBox()
+        fee_combo_values = ['sats', 'sats/byte']
+        if main_window.fx and main_window.fx.is_enabled():
+            fee_combo_values.append(main_window.fx.get_currency())
+        fee_combo.addItems(fee_combo_values)
+        hbox_maxfee.addWidget(fee_combo)
+
+        help_button__max_fee = QPushButton("?")
+        hbox_maxfee.addWidget(help_button__max_fee)
+
+        vbox.addLayout(hbox_maxfee)
+
+        advanced_settings_title = QHBoxLayout()
+        advanced_settings_title.addWidget(QLabel("<b>Advanced Settings</b>"))
+        vbox.addLayout(advanced_settings_title)
+
         hbox_ntx=QHBoxLayout()
-        
         hbox_ntx.addWidget(QLabel("Default number of Txs"))
         num_txs_e=QLineEdit()
         num_txs_e.setText(str(self.num_txs))
         hbox_ntx.addWidget(num_txs_e)
+        help_button__num_txs = QPushButton("?")
+        hbox_ntx.addWidget(help_button__num_txs)
         vbox.addLayout(hbox_ntx)
         
-        hbox_maxfee=QHBoxLayout()
-        hbox_maxfee.addWidget(QLabel("Default max fee to use"))
-        max_fees_e=QLineEdit()
-        max_fees_e.setText(str(self.max_fees))
-        hbox_maxfee.addWidget(max_fees_e)     
-        vbox.addLayout(hbox_maxfee)
+
         
-        hbox_target_intervall = QHBoxLayout()
-        hbox_target_intervall.addWidget(QLabel("Target intervall"))
-        target_intervall_e=QLineEdit()
-        target_intervall_e.setText(str(self.target_intervall))
-        hbox_target_intervall.addWidget(target_intervall_e)
-        vbox.addLayout(hbox_target_intervall)
+        # hbox_target_interval = QHBoxLayout()
+        # hbox_target_interval.addWidget(QLabel("Target interval"))
+        # target_interval_e=QLineEdit()
+        # target_interval_e.setText(str(self.target_interval))
+        # hbox_target_interval.addWidget(target_interval_e)
+        # vbox.addLayout(hbox_target_interval)
 
         vbox.addStretch()
         vbox.addLayout(Buttons(CloseButton(d), OkButton(d)))
@@ -86,9 +106,9 @@ class Plugin(BasePlugin):
         self.config.set_key('bitpost_num_txs', num_txs)
         self.num_txs = num_txs
 
-        target_intervall = str(target_intervall_e.text())
-        self.config.set_key('bitpost_target_intervall', target_intervall)
-        self.target_intervall = target_intervall
+        # target_interval = str(target_interval_e.text())
+        # self.config.set_key('bitpost_target_interval', target_interval)
+        # self.target_interval = target_interval
 
     
     def bump_fee(self, tx, new_fee, coins):
@@ -245,7 +265,7 @@ class Plugin(BasePlugin):
 
         self.config.set_key('bitpost_max_fees', self.default_max_fee)
         self.config.set_key('bitpost_num_txs', self.default_num_txs)
-        self.config.set_key('bitpost_target_intervall', self.default_target_mins)
+        self.config.set_key('bitpost_target_interval', self.default_target_mins)
     
     @hook
     def close_wallet(self, wallet):

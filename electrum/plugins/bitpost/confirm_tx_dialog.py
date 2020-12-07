@@ -74,7 +74,7 @@ class ConfirmTxDialog(WindowModalDialog):
         # self.num_txs.textChanged.connect(self.change_num_txs)
         # grid.addWidget(self.num_txs,1,1)
         grid.addWidget(QLabel(_("TARGET")),0,0)
-        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_intervall'))*60))
+        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_interval'))*60))
         grid.addWidget(self.qtarget,0,1) 
 
         self.asap_check=QCheckBox("ASAP")
