@@ -20,7 +20,7 @@ from electrum.gui.qt.util import (WindowModalDialog, ColorScheme, HelpLabel, But
 from electrum.gui.qt.fee_slider import FeeSlider, FeeComboBox
 
 import requests
-from .interface import BitpostInterface
+from .interface import BitpostInterface, BitpostDownException
 from datetime import datetime
 import time
 
@@ -87,8 +87,8 @@ class ConfirmTxDialog(WindowModalDialog):
         self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fees')))
         self.max_fees.textChanged.connect(self.change_max_fees)
         grid.addWidget(self.max_fees,2,1)                
-        fee_combo=QComboBox()
-        fee_combo_values=['sats','sats/byte']
+        self.fee_combo=QComboBox()
+        fee_combo_values=['sats', 'sats/byte']
 
 
         print(dir(self.main_window.fx))
@@ -96,10 +96,10 @@ class ConfirmTxDialog(WindowModalDialog):
         if self.main_window.fx and self.main_window.fx.is_enabled():
             fee_combo_values.append(self.main_window.fx.get_currency())
             
-        fee_combo.addItems(fee_combo_values)
+        self.fee_combo.addItems(fee_combo_values)
         
         
-        grid.addWidget(fee_combo,2,2)
+        grid.addWidget(self.fee_combo,2,2)
         
        
         
@@ -196,27 +196,31 @@ class ConfirmTxDialog(WindowModalDialog):
         else:
             print("ERROR: is_send is false")
 
-    def get_feerates(self):
+    def get_feerates(self, estimated_size):
         if self.config.get('testnet'):
             testnet = True
         else:
             testnet = False
         bitpost_interface = BitpostInterface(testnet=testnet)
-        return bitpost_interface.get_feerates(float(self.max_fees.text()), size=self.num_txs)
+        max_feerate = self.calculate_max_feerate(estimated_size, self.fee_combo.currentText())
+        return bitpost_interface.get_feerates(max_feerate, size=self.num_txs)
+
+    def calculate_max_feerate(self, estimated_size, fee_unit):
+        raw_max_fee = float(self.max_fees.text())
+        if fee_unit == 'sats/byte':
+            return raw_max_fee
+        elif fee_unit == 'sats':
+            return raw_max_fee/estimated_size
+        else:
+            max_sats = 100_000_000*raw_max_fee/float(self.main_window.fx.exchange_rate())
+            return max_sats/estimated_size
 
     def prepare_txs(self):
         try:
-            feerates = self.get_feerates()
-        except:
-            self.main_window.show_error(_("Fee Rates Service Not Available"), parent=self)
-            self.is_send = False
-            return
-
-        try:
             base_tx = self.make_tx(1)
             est_size = base_tx.estimated_size()
-            print("tx total size estimated:",base_tx.estimated_total_size())
-            print("tx size estimated:",base_tx.estimated_size())
+            feerates = self.get_feerates(est_size)
+
             base_tx.set_rbf(True)
             base_tx.serialize_to_network()
             for fee in feerates:
@@ -247,3 +251,7 @@ class ConfirmTxDialog(WindowModalDialog):
             self.txs = None
             self.main_window.show_error(str(e))
             raise
+        except BitpostDownException:
+            self.main_window.show_error(_("Fee Rates Service Not Available"), parent=self)
+            self.is_send = False
+            return

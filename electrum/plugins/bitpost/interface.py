@@ -80,7 +80,7 @@ class BitpostInterface:
             parameters['target'] = target
         answer = requests.get(self.baseURL + '/feerateset', params=parameters)
         if answer.status_code >= 400:
-            raise Exception("Failed to get set of feerates!")
+            raise BitpostDownException("Failed to get set of feerates!")
         return answer.json()['data']['feerates']
 
 
@@ -218,3 +218,8 @@ class BitpostRequest:
             if subscription not in existing_subs:
                 channel['subscriptions'].append({'name': subscription})
 
+
+class BitpostDownException(Exception):
+
+    def __init__(self, message):
+        super(message)
