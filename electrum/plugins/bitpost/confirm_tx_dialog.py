@@ -1,27 +1,5 @@
 #!/usr/bin/env python
-#
-# Electrum - lightweight Bitcoin client
-# Copyright (2019) The Electrum Developers
-#
-# Permission is hereby granted, free of charge, to any person
-# obtaining a copy of this software and associated documentation files
-# (the "Software"), to deal in the Software without restriction,
-# including without limitation the rights to use, copy, modify, merge,
-# publish, distribute, sublicense, and/or sell copies of the Software,
-# and to permit persons to whom the Software is furnished to do so,
-# subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be
-# included in all copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-# EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-# MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-# NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
-# BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-# ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-# CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+
 
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional, Union
@@ -48,33 +26,16 @@ import time
 if TYPE_CHECKING:
     from .main_window import ElectrumWindow
 
-
-
-class DateTimeCalendar(QVBoxLayout):
-    def __init__(self,current_date=None):
-        if not current_date:
-            current_date=datetime.now()
-            
-        QVBoxLayout.__init__(self)
-        self.date=QCalendarWidget()
-        self.date.setSelectedDate(QDate(current_date.year,current_date.month,current_date.day))
-
-        self.addWidget(self.date)
-        hbox=QHBoxLayout()
-        self.hour = QComboBox()
-        self.minute = QComboBox()
-        self.hour.addItems([ str(i) for i in range(0,24)])
-        self.minute.addItems([ str(i) for i in range(0,60)])
-        self.hour.setCurrentIndex(current_date.hour)
-        self.minute.setCurrentIndex(current_date.minute)
-        hbox.addWidget(QLabel(_("H:")))
-        hbox.addWidget(self.hour)
-        hbox.addWidget(QLabel(_("M:")))
-        hbox.addWidget(self.minute)
-        self.addLayout(hbox)
+class PreviewTxsDialog(WindowModalDialog):
+    def __init__(self, *, window:'ElectrumWindow',txs):
+        WindowModalDialog.__init__(self,window,_('BitPost Transactions Preview'))
+        self.main_window=window
+        self.txs=txs
+        vbox=QVBoxLayout()
+        self.setLayout(vbox)
+        lbox=QListWidget()
         
-    
-     
+      
 class ConfirmTxDialog(WindowModalDialog):
     # set fee and return password (after pw check)
 
@@ -106,46 +67,24 @@ class ConfirmTxDialog(WindowModalDialog):
         grid.addWidget(self.amount_label, 0, 1)
 
         grid.addWidget(QLabel(_("NUMBER TXS")),1,0)
-        self.num_txs = QLineEdit("3")
+        self.num_txs = QLineEdit(str(window.config.get('bitpost_num_txs')))
         self.num_txs.textChanged.connect(self.change_num_txs)
         grid.addWidget(self.num_txs,1,1)
        
         grid.addWidget(QLabel(_("MAX FEE")),2,0)
-        self.max_fees = QLineEdit("10000")
+        self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fees')))
         self.max_fees.textChanged.connect(self.change_max_fees)
         grid.addWidget(self.max_fees,2,1)                
         
         grid.addWidget(QLabel(_("DELAY")),3,0)
         grid.addWidget(QLabel(_("TARGET")),3,1)
-        """
-        self.qdelay = QCalendarWidget()
-        self.qtarget = QCalendarWidget()
-        self.qdelayh = QComboBox()
-        self.qdelaym = QComboBox()
-        self.qdelayh.addItems([ str(i) for i in range(0,24)])
-        self.qdelaym.addItems([ str(i) for i in range(0,60)])
-        self.qtargeth = QComboBox()
-        self.qtargetm = QComboBox()
-        self.qtargeth.addItems([ str(i) for i in range(0,24)])
-        self.qtargetm.addItems([ str(i) for i in range(0,60)])
-        hLDelay=QHBoxLayout()
-        hLDelay.addWidget(self.qdelayh)
-        hLDelay.addWidget(self.qdelaym)
-        hLTarget=QHBoxLayout()
-        hLTarget.addWidget(self.qtargeth)
-        hLTarget.addWidget(self.qtargetm)
-        grid.addWidget(self.qdelay,5,0)
-        grid.addWidget(self.qtarget,5,1)
-        grid.addLayout(hLDelay,6,0)
-        grid.addLayout(hLTarget,6,1)
-        """
-        self.qdelay=QDateTimeEdit(QDateTime.currentDateTime())
 
-        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime())
+        self.qdelay=QDateTimeEdit(QDateTime.currentDateTime())
+        
+        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_intervall'))*60))
         grid.addWidget(self.qdelay,4,0)
         grid.addWidget(self.qtarget,4,1)
-        
-        
+                
         self.message_label = QLabel(self.default_message())
         grid.addWidget(self.message_label, 9, 0, 1, -1)
         self.pw_label = QLabel(_('Password'))
@@ -159,7 +98,7 @@ class ConfirmTxDialog(WindowModalDialog):
         self.send_button.clicked.connect(self.on_send)
         self.send_button.setDefault(True)
         vbox.addLayout(Buttons(CancelButton(self), self.send_button))
-        #BlockingWaitingDialog(window, _("Preparing transaction..."), self.prepare_txs)
+
         self.update()
         self.is_send = False
         
@@ -206,13 +145,14 @@ class ConfirmTxDialog(WindowModalDialog):
         self.target=self.qtarget.dateTime().toPyDateTime()
         self.delay=self.qdelay.dateTime().toPyDateTime()  
         self.is_send = True
-        self.prepare_txs()
+        BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
         if self.is_send:
             self.accept()
         else:
             print("ERROR: is_send is false")
 
     def prepare_txs(self):
+    
         try:
             bp_feerate = requests.get("https://api.bitpost.co/feerateset?maxfeerate=" + 
                     str(self.max_fees.text())+"&size="+str(self.num_txs.text())).json()
@@ -222,6 +162,9 @@ class ConfirmTxDialog(WindowModalDialog):
                 feerates = bp_feerate['data']['feerates']
                 print("feerates",feerates)
             else:
+                print("MAX_FEES:",self.max_fees.text())
+                print("SIZE:",self.num_txs.text())
+                print(bp_feerate)
                 self.main_window.show_error(_("Fee Rates Service Not Available"), parent=self)
                 self.is_send = False
                 return
@@ -259,4 +202,3 @@ class ConfirmTxDialog(WindowModalDialog):
             self.txs = None
             self.main_window.show_error(str(e))
             raise
-
