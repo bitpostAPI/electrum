@@ -197,13 +197,20 @@ class Plugin(BasePlugin):
 
 
             print("transactions signed")
-            target=target.timestamp()
-            delay=delay.timestamp()
+            try:
+                target=target.timestamp()
+            except:
+                target=0
+            try:
+                delay=delay.timestamp()
+            except:
+                delay=0
+                
             now=datetime.now().timestamp()
             if target < delay:
                 raise Exception("Target should be greter than delay")
             if now > target:
-                raise Exception("Target have to be in the future");
+                target= now + 600
             if now > delay:
                 delay = 0
                 

@@ -4,7 +4,7 @@
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional, Union
 
-from PyQt5.QtWidgets import  QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QCalendarWidget, QComboBox,QHBoxLayout,QDateTimeEdit, QListWidget
+from PyQt5.QtWidgets import  QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QCalendarWidget, QComboBox,QHBoxLayout,QDateTimeEdit, QListWidget,QCheckBox,QSizePolicy
 from PyQt5.QtCore import QDate,QDateTime
 
 from electrum.i18n import _
@@ -73,20 +73,46 @@ class ConfirmTxDialog(WindowModalDialog):
         # self.num_txs = QLineEdit(str(window.config.get('bitpost_num_txs')))
         # self.num_txs.textChanged.connect(self.change_num_txs)
         # grid.addWidget(self.num_txs,1,1)
-       
+        grid.addWidget(QLabel(_("TARGET")),0,0)
+        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_intervall'))*60))
+        grid.addWidget(self.qtarget,0,1) 
+
+        self.asap_check=QCheckBox("ASAP")
+        self.asap_check.clicked.connect(self.toggle_target)
+        
+        grid.addWidget(self.asap_check,0,2)
+        
+           
         grid.addWidget(QLabel(_("MAX FEE")),2,0)
         self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fees')))
         self.max_fees.textChanged.connect(self.change_max_fees)
         grid.addWidget(self.max_fees,2,1)                
-        
-        grid.addWidget(QLabel(_("DELAY")),3,0)
-        grid.addWidget(QLabel(_("TARGET")),3,1)
+        fee_combo=QComboBox()
+        fee_combo_values=['sats','sats/byte']
 
-        self.qdelay=QDateTimeEdit(QDateTime.currentDateTime())
+
+        print(dir(self.main_window.fx))
+        print(self.main_window.fx.get_currency())
+        if self.main_window.fx and self.main_window.fx.is_enabled():
+            fee_combo_values.append(self.main_window.fx.get_currency())
+            
+        fee_combo.addItems(fee_combo_values)
         
-        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_intervall'))*60))
+        
+        grid.addWidget(fee_combo,2,2)
+        
+       
+        
+        self.schedule_check=QCheckBox(_("Schedule transaction"))
+        self.schedule_check.clicked.connect(self.toggle_delay)
+        grid.addWidget(self.schedule_check, 3, 0,1,-1)
+        self.qdelay=QDateTimeEdit(QDateTime.currentDateTime())
         grid.addWidget(self.qdelay,4,0)
-        grid.addWidget(self.qtarget,4,1)
+        sp_retain = QSizePolicy(self.qdelay.sizePolicy())
+        sp_retain.setRetainSizeWhenHidden(True)
+        self.qdelay.setSizePolicy(sp_retain)
+        
+        self.qdelay.setVisible(False)
                 
         self.message_label = QLabel(self.default_message())
         grid.addWidget(self.message_label, 9, 0, 1, -1)
@@ -105,6 +131,24 @@ class ConfirmTxDialog(WindowModalDialog):
         self.update()
         self.is_send = False
         
+    def toggle_target(self):
+        if self.asap_check.isChecked():
+            self.qtarget.setEnabled(False)
+            self.qdelay.setEnabled(False)
+            self.schedule_check.setEnabled(False)
+        else:
+            self.qtarget.setEnabled(True)
+            self.qdelay.setEnabled(True)
+            self.schedule_check.setEnabled(True)
+            
+    def toggle_delay(self):
+        if self.schedule_check.isChecked():
+            print("checked")
+            self.qdelay.setVisible(True)
+
+        else:
+            print("unckecked")
+            self.qdelay.setVisible(False)
     def change_max_fees(self):
         """
         TODO
@@ -138,9 +182,13 @@ class ConfirmTxDialog(WindowModalDialog):
         #delay_d = self.qdelay.selectedDate().toPyDate()
         #self.target=datetime(target_d.year,target_d.month,target_d.day,self.qtargeth,self.qtargetm)
         #self.target=datetime(delay_d.year,delay_d.month,delay_d.day,self.qdelayh,self.qdelaym)
-
+        if self.asap_check.isChecked():
+            self.target=0
         self.target=self.qtarget.dateTime().toPyDateTime()
-        self.delay=self.qdelay.dateTime().toPyDateTime()  
+        if self.schedule_check.isChecked():
+            self.delay=self.qdelay.dateTime().toPyDateTime()  
+        else:
+            self.delay=0
         self.is_send = True
         BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
         if self.is_send:
