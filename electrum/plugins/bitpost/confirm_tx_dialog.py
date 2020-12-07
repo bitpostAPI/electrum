@@ -4,7 +4,7 @@
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional, Union
 
-from PyQt5.QtWidgets import  QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QCalendarWidget, QComboBox,QHBoxLayout,QDateTimeEdit
+from PyQt5.QtWidgets import  QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QCalendarWidget, QComboBox,QHBoxLayout,QDateTimeEdit, QListWidget
 from PyQt5.QtCore import QDate,QDateTime
 
 from electrum.i18n import _
@@ -20,11 +20,12 @@ from electrum.gui.qt.util import (WindowModalDialog, ColorScheme, HelpLabel, But
 from electrum.gui.qt.fee_slider import FeeSlider, FeeComboBox
 
 import requests
+from .interface import BitpostInterface
 from datetime import datetime
 import time
 
 if TYPE_CHECKING:
-    from .main_window import ElectrumWindow
+    from electrum.gui.qt.main_window import ElectrumWindow
 
 class PreviewTxsDialog(WindowModalDialog):
     def __init__(self, *, window:'ElectrumWindow',txs):
@@ -56,6 +57,8 @@ class ConfirmTxDialog(WindowModalDialog):
         self.needs_update = False
         self.password_required = self.wallet.has_keystore_encryption() and not is_sweep
 
+        self.num_txs = int(window.config.get('bitpost_num_txs'))
+
        
         vbox = QVBoxLayout()
         self.setLayout(vbox)
@@ -63,13 +66,13 @@ class ConfirmTxDialog(WindowModalDialog):
         vbox.addLayout(grid)
         self.amount_label = QLabel('')
         
-        grid.addWidget(QLabel(_("Amount to be sent") + ": "), 0, 0)
-        grid.addWidget(self.amount_label, 0, 1)
+        # grid.addWidget(QLabel(_("Amount to be sent") + ": "), 0, 0)
+        # grid.addWidget(self.amount_label, 0, 1)
 
-        grid.addWidget(QLabel(_("NUMBER TXS")),1,0)
-        self.num_txs = QLineEdit(str(window.config.get('bitpost_num_txs')))
-        self.num_txs.textChanged.connect(self.change_num_txs)
-        grid.addWidget(self.num_txs,1,1)
+        # grid.addWidget(QLabel(_("NUMBER TXS")),1,0)
+        # self.num_txs = QLineEdit(str(window.config.get('bitpost_num_txs')))
+        # self.num_txs.textChanged.connect(self.change_num_txs)
+        # grid.addWidget(self.num_txs,1,1)
        
         grid.addWidget(QLabel(_("MAX FEE")),2,0)
         self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fees')))
@@ -103,12 +106,6 @@ class ConfirmTxDialog(WindowModalDialog):
         self.is_send = False
         
     def change_max_fees(self):
-        """
-        TODO
-        check user input data
-        """
-        pass
-    def change_num_txs(self):
         """
         TODO
         check user input data
@@ -151,23 +148,23 @@ class ConfirmTxDialog(WindowModalDialog):
         else:
             print("ERROR: is_send is false")
 
+    def get_feerates(self):
+        if self.config.get('testnet'):
+            testnet = True
+        else:
+            testnet = False
+        bitpost_interface = BitpostInterface(testnet=testnet)
+        return bitpost_interface.get_feerates(float(self.max_fees.text()), size=self.num_txs)
+
     def prepare_txs(self):
-    
         try:
-            bp_feerate = requests.get("https://api.bitpost.co/feerateset?maxfeerate=" + 
-                    str(self.max_fees.text())+"&size="+str(self.num_txs.text())).json()
-                    
-            feerates=[]
-            if bp_feerate['status'] == 'success':
-                feerates = bp_feerate['data']['feerates']
-                print("feerates",feerates)
-            else:
-                print("MAX_FEES:",self.max_fees.text())
-                print("SIZE:",self.num_txs.text())
-                print(bp_feerate)
-                self.main_window.show_error(_("Fee Rates Service Not Available"), parent=self)
-                self.is_send = False
-                return
+            feerates = self.get_feerates()
+        except:
+            self.main_window.show_error(_("Fee Rates Service Not Available"), parent=self)
+            self.is_send = False
+            return
+
+        try:
             base_tx = self.make_tx(1)
             est_size = base_tx.estimated_size()
             print("tx total size estimated:",base_tx.estimated_total_size())
