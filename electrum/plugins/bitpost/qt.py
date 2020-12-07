@@ -70,8 +70,14 @@ class Plugin(BasePlugin):
 
         vbox.addLayout(hbox_maxfee)
 
+        empty_line = QHBoxLayout()
+        empty_line.addWidget(QLabel(""))
+        vbox.addLayout(empty_line)
+
         advanced_settings_title = QHBoxLayout()
+        advanced_settings_title.addStretch()
         advanced_settings_title.addWidget(QLabel("<b>Advanced Settings</b>"))
+        advanced_settings_title.addStretch()
         vbox.addLayout(advanced_settings_title)
 
         hbox_ntx=QHBoxLayout()
