@@ -26,6 +26,7 @@ class Plugin(BasePlugin):
     default_max_fee_unit = 'sats'
 
     default_num_txs = 50
+    default_delay = 0
     default_target_mins = 20
 
     def __init__(self, parent, config, name):
@@ -34,6 +35,7 @@ class Plugin(BasePlugin):
         self.max_fee = self.config.get('bitpost_max_fee', self.default_max_fee)
         self.max_fee_unit = self.config.get('bitpost_max_fee_unit', self.default_max_fee_unit)
         self.num_txs = self.config.get('bitpost_num_txs', self.default_num_txs)
+        self.delay = self.config.get('bitpost_delay', self.default_delay)
         self.target_interval = self.config.get('bitpost_target_interval', self.default_target_mins)
 
         
@@ -90,9 +92,23 @@ class Plugin(BasePlugin):
         help_button__num_txs = QPushButton("?")
         hbox_ntx.addWidget(help_button__num_txs)
         vbox.addLayout(hbox_ntx)
-        
 
-        
+        broadcast_policy = QHBoxLayout()
+        broadcast_policy.addWidget(QLabel("First broadcast policy"))
+
+        broadcast_policy_combo = QComboBox()
+        # 'Broadcast lowest fee transaction immediatly'
+        broadcast_policy_options = ['Don\'t delay first broadcast', 'Allow delay of first broadcast']
+        if self.delay == 1:
+            broadcast_policy_options.reverse()
+
+        broadcast_policy_combo.addItems(broadcast_policy_options)
+        broadcast_policy.addWidget(broadcast_policy_combo)
+
+        help_button__broadcast_policy = QPushButton("?")
+        broadcast_policy.addWidget(help_button__broadcast_policy)
+        vbox.addLayout(broadcast_policy)
+
         # hbox_target_interval = QHBoxLayout()
         # hbox_target_interval.addWidget(QLabel("Target interval"))
         # target_interval_e=QLineEdit()
@@ -115,6 +131,9 @@ class Plugin(BasePlugin):
         num_txs = str(num_txs_e.text())
         self.config.set_key('bitpost_num_txs', num_txs)
         self.num_txs = num_txs
+
+        self.delay = 1 if broadcast_policy_combo.currentText() == 'Allow delay of first broadcast' else 0
+        self.config.set_key('bitpost_delay', self.delay)
 
         # target_interval = str(target_interval_e.text())
         # self.config.set_key('bitpost_target_interval', target_interval)
@@ -232,13 +251,13 @@ class Plugin(BasePlugin):
             except:
                 target=0
             try:
-                delay=delay.timestamp()
+                delay = delay.timestamp()
             except:
-                delay=0
+                delay = self.delay
                 
             now=datetime.now().timestamp()
             if target < delay:
-                raise Exception("Target should be greter than delay")
+                raise Exception("Target should be greater than delay")
             if now > target:
                 target= now + 600
             if now > delay:
@@ -278,6 +297,8 @@ class Plugin(BasePlugin):
         self.config.set_key('bitpost_max_fee_unit', self.max_fee_unit)
 
         self.config.set_key('bitpost_num_txs', self.num_txs)
+        self.config.set_key('bitpost_delay', self.delay)
+
         self.config.set_key('bitpost_target_interval', self.target_interval)
     
     @hook

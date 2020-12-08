@@ -178,7 +178,7 @@ class ConfirmTxDialog(WindowModalDialog):
         if self.schedule_check.isChecked():
             self.delay=self.qdelay.dateTime().toPyDateTime()  
         else:
-            self.delay=0
+            self.delay = self.main_window.config.get('bitpost_delay', 0)
         self.is_send = True
         BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
         if self.is_send:
