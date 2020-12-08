@@ -17,21 +17,24 @@ from electrum.transaction import (Transaction, PartialTxInput,
                                   
 from .interface import BitpostInterface
 from datetime import datetime
-
+from .utils import get_fee_units
                                   
                                   
 class Plugin(BasePlugin):
 
     default_max_fee = 1000
+    default_max_fee_unit = 'sats'
+
     default_num_txs = 50
     default_target_mins = 20
 
     def __init__(self, parent, config, name):
         BasePlugin.__init__(self, parent, config, name)
         self.wallets=set()
-        self.max_fees=self.config.get('bitpost_max_fees', self.default_max_fee)
-        self.num_txs=self.config.get('bitpost_num_txs', self.default_num_txs)
-        self.target_interval=self.config.get('bitpost_target_interval', self.default_target_mins)
+        self.max_fee = self.config.get('bitpost_max_fee', self.default_max_fee)
+        self.max_fee_unit = self.config.get('bitpost_max_fee_unit', self.default_max_fee_unit)
+        self.num_txs = self.config.get('bitpost_num_txs', self.default_num_txs)
+        self.target_interval = self.config.get('bitpost_target_interval', self.default_target_mins)
 
         
     def requires_settings(self):
@@ -55,13 +58,12 @@ class Plugin(BasePlugin):
         hbox_maxfee = QHBoxLayout()
         hbox_maxfee.addWidget(QLabel("Default max fee to use"))
         max_fees_e = QLineEdit()
-        max_fees_e.setText(str(self.max_fees))
+        max_fees_e.setText(str(self.max_fee))
         hbox_maxfee.addWidget(max_fees_e)
 
         fee_combo = QComboBox()
-        fee_combo_values = ['sats', 'sats/byte']
-        if main_window.fx and main_window.fx.is_enabled():
-            fee_combo_values.append(main_window.fx.get_currency())
+        fee_combo_values = get_fee_units(main_window, self.max_fee_unit)
+
         fee_combo.addItems(fee_combo_values)
         hbox_maxfee.addWidget(fee_combo)
 
@@ -104,9 +106,11 @@ class Plugin(BasePlugin):
         if not d.exec_():
             return
             
-        max_fees = str(max_fees_e.text())
-        self.config.set_key('bitpost_max_fees', max_fees)
-        self.max_fees = max_fees
+        self.max_fee = str(max_fees_e.text())
+        self.config.set_key('bitpost_max_fee', self.max_fee)
+
+        self.config.set_key('bitpost_max_fee_unit', fee_combo.currentText())
+        self.max_fee_unit = fee_combo.currentText()
 
         num_txs = str(num_txs_e.text())
         self.config.set_key('bitpost_num_txs', num_txs)
@@ -268,15 +272,30 @@ class Plugin(BasePlugin):
     @hook
     def load_wallet(self, wallet, main_window):
         self.wallet=wallet
+        self.window = main_window
 
-        self.config.set_key('bitpost_max_fees', self.default_max_fee)
-        self.config.set_key('bitpost_num_txs', self.default_num_txs)
-        self.config.set_key('bitpost_target_interval', self.default_target_mins)
+        self.config.set_key('bitpost_max_fee', self.max_fee)
+        self.config.set_key('bitpost_max_fee_unit', self.max_fee_unit)
+
+        self.config.set_key('bitpost_num_txs', self.num_txs)
+        self.config.set_key('bitpost_target_interval', self.target_interval)
     
     @hook
     def close_wallet(self, wallet):
         self.wallet=None
-    
+
+    @hook
+    def close_settings_dialog(self):
+        has_fx = self.window.fx and self.window.fx.is_enabled()
+
+        has_different_fx = self.max_fee_unit != 'sats' and  self.max_fee_unit != 'sats/byte' and self.window.fx.get_currency() != self.max_fee_unit
+        if has_fx and has_different_fx:
+            self.max_fee_unit = self.default_max_fee_unit
+            self.config.set_key('bitpost_max_fee_unit', self.max_fee_unit)
+
+            self.max_fee = self.default_max_fee
+            self.config.set_key('bitpost_max_fee', self.max_fee)
+
     @hook
     def create_send_tab(self, grid):
         """ Called after sending a payment

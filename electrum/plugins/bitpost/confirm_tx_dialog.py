@@ -21,6 +21,7 @@ from electrum.gui.qt.fee_slider import FeeSlider, FeeComboBox
 
 import requests
 from .interface import BitpostInterface, BitpostDownException
+from .utils import get_fee_units
 from datetime import datetime
 import time
 
@@ -73,7 +74,7 @@ class ConfirmTxDialog(WindowModalDialog):
         # self.num_txs = QLineEdit(str(window.config.get('bitpost_num_txs')))
         # self.num_txs.textChanged.connect(self.change_num_txs)
         # grid.addWidget(self.num_txs,1,1)
-        grid.addWidget(QLabel(_("TARGET")),0,0)
+        grid.addWidget(QLabel(_("Target for confirmation")),0,0)
         self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_interval'))*60))
         grid.addWidget(self.qtarget,0,1) 
 
@@ -83,26 +84,15 @@ class ConfirmTxDialog(WindowModalDialog):
         grid.addWidget(self.asap_check,0,2)
         
            
-        grid.addWidget(QLabel(_("MAX FEE")),2,0)
-        self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fees')))
+        grid.addWidget(QLabel(_("Maximum Fee")),2,0)
+        self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fee')))
         self.max_fees.textChanged.connect(self.change_max_fees)
         grid.addWidget(self.max_fees,2,1)                
         self.fee_combo=QComboBox()
-        fee_combo_values=['sats', 'sats/byte']
-
-
-        print(dir(self.main_window.fx))
-        print(self.main_window.fx.get_currency())
-        if self.main_window.fx and self.main_window.fx.is_enabled():
-            fee_combo_values.append(self.main_window.fx.get_currency())
-            
+        fee_combo_values = get_fee_units(window, window.config.get('bitpost_max_fee_unit'))
         self.fee_combo.addItems(fee_combo_values)
-        
-        
         grid.addWidget(self.fee_combo,2,2)
-        
-       
-        
+
         self.schedule_check=QCheckBox(_("Schedule transaction"))
         self.schedule_check.clicked.connect(self.toggle_delay)
         grid.addWidget(self.schedule_check, 3, 0,1,-1)
