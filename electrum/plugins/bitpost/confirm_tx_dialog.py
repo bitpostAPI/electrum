@@ -80,9 +80,7 @@ class ConfirmTxDialog(WindowModalDialog):
 
         self.asap_check=QCheckBox("ASAP")
         self.asap_check.clicked.connect(self.toggle_target)
-        
         grid.addWidget(self.asap_check,0,2)
-        
            
         grid.addWidget(QLabel(_("Maximum Fee")),2,0)
         self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fee')))
@@ -117,6 +115,10 @@ class ConfirmTxDialog(WindowModalDialog):
         self.send_button.clicked.connect(self.on_send)
         self.send_button.setDefault(True)
         vbox.addLayout(Buttons(CancelButton(self), self.send_button))
+
+        # set default to ASAP checked
+        self.asap_check.setChecked(True)
+        self.toggle_target()
 
         self.update()
         self.is_send = False
