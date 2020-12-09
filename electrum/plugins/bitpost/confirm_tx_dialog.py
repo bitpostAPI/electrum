@@ -29,14 +29,62 @@ if TYPE_CHECKING:
     from electrum.gui.qt.main_window import ElectrumWindow
 
 class PreviewTxsDialog(WindowModalDialog):
-    def __init__(self, *, window:'ElectrumWindow',txs):
+    def __init__(self, *, window:'ElectrumWindow',txs, password,is_sweep):
+    
         WindowModalDialog.__init__(self,window,_('BitPost Transactions Preview'))
         self.main_window=window
         self.txs=txs
+        self.password_required = self.main_window.wallet.has_keystore_encryption() and not is_sweep
+        self.is_send=False
         vbox=QVBoxLayout()
         self.setLayout(vbox)
         lbox=QListWidget()
+   
+        items=[]
+        for tx in txs:
+            inputs=tx.inputs()
+            outputs=tx.outputs()
+            text="FEE: " + str(tx.get_fee()) + " " + "SIZE: " + str(tx.estimated_size()) +"\n"
+            text+="INPUTS:\n"
+            for i in inputs:
+                text+=str(i.prevout.txid.hex())+" : "+str(i.prevout.out_idx)+" = "+str(i.value_sats())+"\n"
+            text+="OUTPUTS:\n"         
+            for o in outputs:
+                text+=str(o.address)+" : "+ str(o.value) + "\n"
+            items.append(text)
+            
+        lbox.addItems(items)
+        vbox.addWidget(lbox)
         
+        self.send_button = QPushButton(_('Broadcast'))
+        self.send_button.clicked.connect(self.on_send)
+        self.send_button.setDefault(True)
+
+        self.pw_label = QLabel(_('Password'))
+        self.pw_label.setVisible(self.password_required)
+        self.pw = PasswordLineEdit(password)
+        self.pw.setVisible(self.password_required)
+        
+        vbox.addLayout(Buttons(CancelButton(self), self.pw_label,self.pw,self.send_button))
+        
+    def run(self):
+        cancelled = not self.exec_()
+        password = self.pw.text() or None
+        return cancelled, self.is_send, password
+        
+    def on_send(self):
+        password = self.pw.text() or None
+        if self.password_required:
+            if password is None:
+                self.main_window.show_error(_("Password required"), parent=self)
+                return
+            try:
+                self.main_window.wallet.check_password(password)
+            except Exception as e:
+                self.main_window.show_error(str(e), parent=self)
+                return
+        self.is_send=True
+        self.accept()
       
 class ConfirmTxDialog(WindowModalDialog):
     # set fee and return password (after pw check)
@@ -56,6 +104,7 @@ class ConfirmTxDialog(WindowModalDialog):
         self.not_enough_funds = False
         self.no_dynfee_estimates = False
         self.needs_update = False
+        self.is_sweep=is_sweep
         self.password_required = self.wallet.has_keystore_encryption() and not is_sweep
 
         self.num_txs = int(window.config.get('bitpost_num_txs'))
@@ -99,7 +148,6 @@ class ConfirmTxDialog(WindowModalDialog):
         sp_retain = QSizePolicy(self.qdelay.sizePolicy())
         sp_retain.setRetainSizeWhenHidden(True)
         self.qdelay.setSizePolicy(sp_retain)
-        
         self.qdelay.setVisible(False)
                 
         self.message_label = QLabel(self.default_message())
@@ -114,7 +162,13 @@ class ConfirmTxDialog(WindowModalDialog):
         self.send_button = QPushButton(_('Send'))
         self.send_button.clicked.connect(self.on_send)
         self.send_button.setDefault(True)
-        vbox.addLayout(Buttons(CancelButton(self), self.send_button))
+        
+        self.preview_button = QPushButton(_('Preview'))
+        self.preview_button.clicked.connect(self.on_preview)
+        self.preview_button.setDefault(True)
+        self.preview_button.setVisible(self.config.get('advanced_preview'))
+        
+        vbox.addLayout(Buttons(CancelButton(self), self.preview_button,self.send_button))
 
         # set default to ASAP checked
         self.asap_check.setChecked(True)
@@ -152,13 +206,36 @@ class ConfirmTxDialog(WindowModalDialog):
         return _('Enter your password to proceed') if self.password_required else _('Click Send to proceed')
 
     def on_preview(self):
-        self.accept()
+        password = self.pw.text() or None
+        BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
+        d = PreviewTxsDialog(window=self.main_window,txs=self.txs,password=password,is_sweep=self.is_sweep)
+        cancelled, is_send, password = d.run()
+        if cancelled:
+            return
+        if is_send:
+            self.pw.setText(password)
+            self.on_send()
 
+    
+    
     def run(self):
         cancelled = not self.exec_()
         password = self.pw.text() or None
-        return cancelled, self.is_send, password, self.txs, self.target, self.delay
 
+        self.target=self.qtarget.dateTime().toPyDateTime()
+        if self.asap_check.isChecked():
+            self.target=0
+        
+        
+        if self.schedule_check.isChecked():
+            self.delay=self.qdelay.dateTime().toPyDateTime()  
+        else:
+            self.delay = self.main_window.config.get('bitpost_delay', 0)
+        self.is_send = True
+
+
+        return cancelled, self.is_send, password, self.txs, self.target, self.delay
+    
     def on_send(self):
         password = self.pw.text() or None
         if self.password_required:
@@ -170,24 +247,14 @@ class ConfirmTxDialog(WindowModalDialog):
             except Exception as e:
                 self.main_window.show_error(str(e), parent=self)
                 return
-        #target_d = self.qtarget.selectedDate().toPyDate()
-        #delay_d = self.qdelay.selectedDate().toPyDate()
-        #self.target=datetime(target_d.year,target_d.month,target_d.day,self.qtargeth,self.qtargetm)
-        #self.target=datetime(delay_d.year,delay_d.month,delay_d.day,self.qdelayh,self.qdelaym)
-        if self.asap_check.isChecked():
-            self.target=0
-        self.target=self.qtarget.dateTime().toPyDateTime()
-        if self.schedule_check.isChecked():
-            self.delay=self.qdelay.dateTime().toPyDateTime()  
-        else:
-            self.delay = self.main_window.config.get('bitpost_delay', 0)
-        self.is_send = True
+        self.is_send=True
         BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
+        
         if self.is_send:
             self.accept()
         else:
             print("ERROR: is_send is false")
-
+    
     def get_feerates(self, estimated_size):
         if self.config.get('testnet'):
             testnet = True
@@ -195,15 +262,19 @@ class ConfirmTxDialog(WindowModalDialog):
             testnet = False
         bitpost_interface = BitpostInterface(testnet=testnet)
         max_feerate = self.calculate_max_feerate(estimated_size, self.fee_combo.currentText())
+        print(max_feerate)
         return bitpost_interface.get_feerates(max_feerate, size=self.num_txs)
 
     def calculate_max_feerate(self, estimated_size, fee_unit):
         raw_max_fee = float(self.max_fees.text())
         if fee_unit == 'sats/byte':
+            print('sats/byte')
             return raw_max_fee
         elif fee_unit == 'sats':
+            print('sats')
             return raw_max_fee/estimated_size
         else:
+            print('else')
             max_sats = 100_000_000*raw_max_fee/float(self.main_window.fx.exchange_rate())
             return max_sats/estimated_size
 

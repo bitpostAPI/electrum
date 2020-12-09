@@ -5,7 +5,7 @@ from electrum.gui.qt.main_window import ElectrumWindow
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QInputDialog, QPushButton, QCheckBox,QLineEdit, QComboBox)
 from functools import partial
 from electrum.i18n import _
-from .confirm_tx_dialog import ConfirmTxDialog
+from .confirm_tx_dialog import ConfirmTxDialog,PreviewTxsDialog
 
 from typing import Optional, TYPE_CHECKING, Sequence, List, Union
 
@@ -172,8 +172,9 @@ class Plugin(BasePlugin):
 
         
         
-    def send_txs(self,txs):
-        pass
+    def send_txs(self,txs,password,target,delay):
+            pass
+        
     def display_bitpost(self,dialog):
         self.window = window = get_parent_main_window(dialog)
         
@@ -222,20 +223,21 @@ class Plugin(BasePlugin):
             if not d.have_enough_funds_assuming_zero_fees():
                 self.show_message(_('Not Enough Funds'))
                 return
-
+        """            
         # shortcut to advanced preview (after "enough funds" check!)
         if self.config.get('advanced_preview'):
             self.preview_tx_dialog(make_tx=make_tx,
                 external_keypairs=external_keypairs)
             return
-
+        """
+        
         cancelled, is_send, password, txs, target, delay = d.run()
         if cancelled:
             return
         if is_send:
             print("TXS BATCH SIZE",len(txs))
             for tx in txs:
-
+            
                 print("----------------")      
                 print("FEE",tx.get_fee())
                 print("****************************")
@@ -243,7 +245,7 @@ class Plugin(BasePlugin):
                 print("SERIALIZED", tx.serialize_to_network())
                 raw_signed_txs.append(tx.serialize_to_network())
                 print("****************************")
-
+            
 
             print("transactions signed")
             try:
@@ -284,7 +286,8 @@ class Plugin(BasePlugin):
                 window.do_clear()
                    
         else:
-            d = ConfirmTxDialog(window=window,txs=txs)
+            return
+            
                 
 
         

@@ -220,6 +220,4 @@ class BitpostRequest:
 
 
 class BitpostDownException(Exception):
-
-    def __init__(self, message):
-        super(message)
+    pass
