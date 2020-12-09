@@ -56,7 +56,7 @@ class PreviewTxsDialog(WindowModalDialog):
         lbox.addItems(items)
         vbox.addWidget(lbox)
         
-        self.send_button = QPushButton(_('Broadcast'))
+        self.send_button = QPushButton(_('Send'))
         self.send_button.clicked.connect(self.on_send)
         self.send_button.setDefault(True)
 
