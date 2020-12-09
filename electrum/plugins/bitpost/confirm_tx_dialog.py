@@ -166,7 +166,7 @@ class ConfirmTxDialog(WindowModalDialog):
         self.preview_button = QPushButton(_('Preview'))
         self.preview_button.clicked.connect(self.on_preview)
         self.preview_button.setDefault(True)
-        self.preview_button.setVisible(self.config.get('advanced_preview'))
+
         
         vbox.addLayout(Buttons(CancelButton(self), self.preview_button,self.send_button))
 
