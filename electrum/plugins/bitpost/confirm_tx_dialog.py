@@ -248,17 +248,12 @@ class ConfirmTxDialog(WindowModalDialog):
         if is_send:
             self.pw.setText(password)
             self.send()
-
-    
     
     def run(self):
         cancelled = not self.exec_()
         password = self.pw.text() or None
-
-        
-
-
         return cancelled, self.is_send, password, self.txs, self.target, self.delay
+
     def send(self):
         password = self.pw.text() or None
         if self.password_required:
@@ -271,9 +266,9 @@ class ConfirmTxDialog(WindowModalDialog):
                 self.main_window.show_error(str(e), parent=self)
                 return
         self.is_send=True
-        self.target=self.qtarget.dateTime().toPyDateTime()
+        self.target=self.qtarget.dateTime().toPyDateTime().timestamp()
         if self.asap_check.isChecked():
-            self.target=0
+            self.target = round(datetime.now().timestamp() + 20*60)
         
         if self.schedule_check.isChecked():
             self.delay=self.qdelay.dateTime().toPyDateTime()  
