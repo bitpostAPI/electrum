@@ -307,10 +307,6 @@ class Plugin(BasePlugin):
 
             print("transactions signed")
             try:
-                target=target.timestamp()
-            except:
-                target=0
-            try:
                 delay = delay.timestamp()
             except:
                 delay = self.delay
