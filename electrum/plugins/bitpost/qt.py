@@ -28,6 +28,7 @@ class Plugin(BasePlugin):
     default_num_txs = 50
     default_delay = 0
     default_target_mins = 20
+    default_notification_platform = 'None'
 
     def __init__(self, parent, config, name):
         BasePlugin.__init__(self, parent, config, name)
@@ -77,6 +78,45 @@ class Plugin(BasePlugin):
         empty_line = QHBoxLayout()
         empty_line.addWidget(QLabel(""))
         vbox.addLayout(empty_line)
+
+        advanced_settings_title = QHBoxLayout()
+        advanced_settings_title.addStretch()
+        advanced_settings_title.addWidget(QLabel("<b>Notifications</b>"))
+        advanced_settings_title.addStretch()
+        vbox.addLayout(advanced_settings_title)
+
+        platform_address = QHBoxLayout()
+
+        platform_address.addWidget(QLabel("Platform"))
+        platform_combo = QComboBox()
+        fee_combo_values = ['None', 'Email', 'Twitter']
+        platform_combo.addItems(fee_combo_values)
+        platform_address.addWidget(platform_combo)
+
+        platform_address.addWidget(QLabel("Address/handle"))
+        vbox.addLayout(platform_address)
+        address_input = QLineEdit()
+        platform_address.addWidget(address_input)
+
+        subscription_title = QHBoxLayout()
+        subscription_title.addWidget(QLabel("Subscriptions"))
+        subscription_title.addWidget(QPushButton("?"))
+        subscription_title.addStretch()
+        vbox.addLayout(subscription_title)
+
+        subscriptions1 = QVBoxLayout()
+        overdue_checkbox = QCheckBox("Overdue")
+        subscriptions1.addWidget(overdue_checkbox)
+        mined_checkbox = QCheckBox("Mined")
+        subscriptions1.addWidget(mined_checkbox)
+        max_fee_reached_checkbox = QCheckBox("Maximum fee reached")
+        subscriptions1.addWidget(max_fee_reached_checkbox)
+        vbox.addLayout(subscriptions1)
+
+        reorg_checkbox = QCheckBox("Block reorg")
+        subscriptions1.addWidget(reorg_checkbox)
+        orphaned_checkbox = QCheckBox("Child tx orphaned")
+        subscriptions1.addWidget(orphaned_checkbox)
 
         advanced_settings_title = QHBoxLayout()
         advanced_settings_title.addStretch()
@@ -135,11 +175,29 @@ class Plugin(BasePlugin):
         self.delay = 1 if broadcast_policy_combo.currentText() == 'Allow delay of first broadcast' else 0
         self.config.set_key('bitpost_delay', self.delay)
 
-        # target_interval = str(target_interval_e.text())
-        # self.config.set_key('bitpost_target_interval', target_interval)
-        # self.target_interval = target_interval
+        if not self.valid_address(platform_combo.currentText(), address_input.text()):
+            pass # TODO error window
 
-    
+        self.config.set_key('bitpost_notification_platform', platform_combo.currentText())
+        self.config.set_key('bitpost_notification_address', address_input.text())
+
+        subscriptions = []
+        if overdue_checkbox.isChecked():
+            subscriptions.append({'name': 'overdue'})
+        if mined_checkbox.isChecked():
+            subscriptions.append({'name': 'mined'})
+        if max_fee_reached_checkbox.isChecked():
+            subscriptions.append({'name': 'reached'})
+        if reorg_checkbox.isChecked():
+            subscriptions.append({'name': 'orphan_block'})
+        if orphaned_checkbox.isChecked():
+            pass # TODO
+
+        self.config.set_key('bitpost_notification_subscriptions', subscriptions)
+
+    def valid_address(self, platform, address):
+        return True  # TODO validation
+
     def bump_fee(self, tx, new_fee, coins):
         print(tx.inputs())
         inputs=tx.inputs()
@@ -273,7 +331,12 @@ class Plugin(BasePlugin):
             
             request = bitpost_interface.create_bitpost_request(raw_signed_txs, 
                                                 int(target), delay=int(delay))
-            
+
+            if self.window.config.get('bitpost_notification_platform') != 'None':
+                request.add_notification(self.window.config.get('bitpost_notification_platform'),
+                                         self.window.config.get('bitpost_notification_address'),
+                                         self.window.config.get('bitpost_notification_subscriptions'))
+
             response=request.send_request().json()
             if response['status'] == 'success':
                 if len(invoice.message)>0:
@@ -303,7 +366,8 @@ class Plugin(BasePlugin):
         self.config.set_key('bitpost_delay', self.delay)
 
         self.config.set_key('bitpost_target_interval', self.target_interval)
-    
+        self.config.set_key('bitpost_notification_platform', self.config.get('bitpost_notification_platform'), self.default_notification_platform)
+
     @hook
     def close_wallet(self, wallet):
         self.wallet=None
