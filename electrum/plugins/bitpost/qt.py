@@ -14,6 +14,7 @@ from electrum.invoices import PR_PAID, PR_FAILED, pr_expiration_values, LNInvoic
 from electrum.transaction import (Transaction, PartialTxInput,
                                   PartialTransaction, PartialTxOutput)
                                   
+from electrum.util import NotEnoughFunds                                
                                   
 from .interface import BitpostInterface
 from datetime import datetime
@@ -156,10 +157,13 @@ class Plugin(BasePlugin):
                 coins=coco)
             
         except:
+            self.window.show_error(_("Not enought funds, please add more inputs or reduce max fee"))
+            raise NotEnoughFunds
+            """
             print(str(new_fee) + "bump fee method 2")
             tx_out = self.window.wallet._bump_fee_through_decreasing_outputs(
                 tx=tx, new_fee_rate=new_fee)
-        """        
+               
         new_inputs=tx_out.inputs()
         my_dict = {i:new_inputs.count(i) for i in new_inputs}
         print(my_dict)

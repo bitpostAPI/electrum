@@ -331,13 +331,15 @@ class ConfirmTxDialog(WindowModalDialog):
         except NotEnoughFunds:
             self.not_enough_funds = True
             self.txs = None
-            if fallback_to_zero_fee:
+            return
+            """if fallback_to_zero_fee:
                 try:
                     self.txs = [self.make_tx(0)]
                 except BaseException:
                     return
             else:
                 return
+            """
         except NoDynamicFeeEstimates:
             self.no_dynfee_estimates = True
             self.txs = None
