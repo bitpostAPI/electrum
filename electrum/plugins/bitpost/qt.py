@@ -199,7 +199,7 @@ class Plugin(BasePlugin):
         return True  # TODO validation
 
     def bump_fee(self, tx, new_fee, coins):
-        print(tx.inputs())
+        
         inputs=tx.inputs()
         coco=[]
         for c in coins:
@@ -207,14 +207,14 @@ class Plugin(BasePlugin):
                 
                 coco.append(c)
         try:
-            print("bump fee method 1")
+            print(str(new_fee) + "bump fee method 1")
             tx_out= self.window.wallet._bump_fee_through_coinchooser(
                 tx=tx,
                 new_fee_rate= new_fee,
                 coins=coco)
             
         except:
-            print("bump fee method 2")
+            print(str(new_fee) + "bump fee method 2")
             tx_out = self.window.wallet._bump_fee_through_decreasing_outputs(
                 tx=tx, new_fee_rate=new_fee)
         """        
@@ -243,8 +243,8 @@ class Plugin(BasePlugin):
         if not invoice:
             print("BitPostPlugin: Invoice is Null")
             return
-        print(dir(invoice))
-        print(invoice)
+        #print(dir(invoice))
+        #print(invoice)
        
         window.wallet.save_invoice(invoice)
 
@@ -317,7 +317,8 @@ class Plugin(BasePlugin):
                 
             now=datetime.now().timestamp()
             if target < delay:
-                raise Exception("Target should be greater than delay")
+                window.show_error(_("Target should be greater than delay"))
+                return
             if now > target:
                 target= now + 600
             if now > delay:
@@ -350,9 +351,6 @@ class Plugin(BasePlugin):
                    
         else:
             return
-            
-                
-
         
     @hook
     def load_wallet(self, wallet, main_window):
@@ -376,7 +374,10 @@ class Plugin(BasePlugin):
     def close_settings_dialog(self):
         has_fx = self.window.fx and self.window.fx.is_enabled()
 
-        has_different_fx = self.max_fee_unit != 'sats' and  self.max_fee_unit != 'sats/byte' and self.window.fx.get_currency() != self.max_fee_unit
+        has_different_fx = self.max_fee_unit != 'sats' and  \
+            self.max_fee_unit != 'sats/byte' and \
+            self.window.fx.get_currency() != self.max_fee_unit
+            
         if has_fx and has_different_fx:
             self.max_fee_unit = self.default_max_fee_unit
             self.config.set_key('bitpost_max_fee_unit', self.max_fee_unit)
@@ -386,16 +387,6 @@ class Plugin(BasePlugin):
 
     @hook
     def create_send_tab(self, grid):
-        """ Called after sending a payment
-
-        Args:
-            grid: QGridLayout containing the Send tab UI
-
-        """
         button = EnterButton(_("BitPost"),lambda: self.display_bitpost(grid))
-
-        #button.clicked.connect(lambda: self.display_bitpost(grid))
         grid.addWidget(button,6,5)
-
-        #window.layout().addWidget(button)
         button.show()

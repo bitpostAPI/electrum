@@ -28,10 +28,20 @@ import time
 if TYPE_CHECKING:
     from electrum.gui.qt.main_window import ElectrumWindow
 
+    
+class Exchange():
+    def __init__(self,fx):
+        self.rate=float(fx.exchange_rate())
+        self.currency=fx.get_currency()
+        
+    def str_exchange(self,value,r=2):
+        return "({}{})".format(round(value/self.rate,r),self.currency)
+                
 class PreviewTxsDialog(WindowModalDialog):
     def __init__(self, *, window:'ElectrumWindow',txs, password,is_sweep):
     
         WindowModalDialog.__init__(self,window,_('BitPost Transactions Preview'))
+        self.setMinimumSize(800, 600)
         self.main_window=window
         self.txs=txs
         self.password_required = self.main_window.wallet.has_keystore_encryption() and not is_sweep
@@ -44,13 +54,42 @@ class PreviewTxsDialog(WindowModalDialog):
         for tx in txs:
             inputs=tx.inputs()
             outputs=tx.outputs()
-            text="FEE: " + str(tx.get_fee()) + " " + "SIZE: " + str(tx.estimated_size()) +"\n"
-            text+="INPUTS:\n"
+            fee = tx.get_fee()
+            fiat=False
+            
+            text = "fee: {}".format(fee)
+            if self.main_window.fx and self.main_window.fx.is_enabled():
+                fiat=Exchange(self.main_window.fx)
+                text+=fiat.str_exchange(fee)
+                   
+            text += "\t\tvbyte: {}\n".format(tx.estimated_size())
+            
+            tmp = "fee/vbyte: {}".format(round(fee/tx.estimated_size(),2))
+            if fiat:
+                tmp += fiat.str_exchange(fee/tx.estimated_size())
+            text += tmp
+            if len(tmp) > 22: tab="\t"
+            else: tab="\t\t"
+            print(tmp,len(tmp),len(tmp)/4)
+            text += "{}total size: {}\n".format(tab, 
+                tx.estimated_total_size())
+                
+            text += "INPUTS:\n"
             for i in inputs:
-                text+=str(i.prevout.txid.hex())+" : "+str(i.prevout.out_idx)+" = "+str(i.value_sats())+"\n"
-            text+="OUTPUTS:\n"         
+                text += "{}:{} = {}".format(
+                    i.prevout.txid.hex(),
+                    i.prevout.out_idx, 
+                    i.value_sats())
+                if fiat:
+                    text += fiat.str_exchange(i.value_sats())
+                text += "\n"
+            text += "OUTPUTS:\n"         
             for o in outputs:
-                text+=str(o.address)+" : "+ str(o.value) + "\n"
+                text+="{} = {}".format(o.address,o.value)
+                if fiat:
+                    text += fiat.str_exchange(o.value)
+                text += "\n" 
+                
             items.append(text)
             
         lbox.addItems(items)
@@ -73,6 +112,7 @@ class PreviewTxsDialog(WindowModalDialog):
         return cancelled, self.is_send, password
         
     def on_send(self):
+        """
         password = self.pw.text() or None
         if self.password_required:
             if password is None:
@@ -83,6 +123,7 @@ class PreviewTxsDialog(WindowModalDialog):
             except Exception as e:
                 self.main_window.show_error(str(e), parent=self)
                 return
+        """
         self.is_send=True
         self.accept()
       
@@ -116,13 +157,7 @@ class ConfirmTxDialog(WindowModalDialog):
         vbox.addLayout(grid)
         self.amount_label = QLabel('')
         
-        # grid.addWidget(QLabel(_("Amount to be sent") + ": "), 0, 0)
-        # grid.addWidget(self.amount_label, 0, 1)
 
-        # grid.addWidget(QLabel(_("NUMBER TXS")),1,0)
-        # self.num_txs = QLineEdit(str(window.config.get('bitpost_num_txs')))
-        # self.num_txs.textChanged.connect(self.change_num_txs)
-        # grid.addWidget(self.num_txs,1,1)
         grid.addWidget(QLabel(_("Target for confirmation")),0,0)
         self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_interval'))*60))
         grid.addWidget(self.qtarget,0,1) 
@@ -189,11 +224,9 @@ class ConfirmTxDialog(WindowModalDialog):
             
     def toggle_delay(self):
         if self.schedule_check.isChecked():
-            print("checked")
             self.qdelay.setVisible(True)
 
         else:
-            print("unckecked")
             self.qdelay.setVisible(False)
     def change_max_fees(self):
         """
@@ -214,7 +247,7 @@ class ConfirmTxDialog(WindowModalDialog):
             return
         if is_send:
             self.pw.setText(password)
-            self.on_send()
+            self.send()
 
     
     
@@ -222,21 +255,11 @@ class ConfirmTxDialog(WindowModalDialog):
         cancelled = not self.exec_()
         password = self.pw.text() or None
 
-        self.target=self.qtarget.dateTime().toPyDateTime()
-        if self.asap_check.isChecked():
-            self.target=0
         
-        
-        if self.schedule_check.isChecked():
-            self.delay=self.qdelay.dateTime().toPyDateTime()  
-        else:
-            self.delay = self.main_window.config.get('bitpost_delay', 0)
-        self.is_send = True
 
 
         return cancelled, self.is_send, password, self.txs, self.target, self.delay
-    
-    def on_send(self):
+    def send(self):
         password = self.pw.text() or None
         if self.password_required:
             if password is None:
@@ -248,12 +271,28 @@ class ConfirmTxDialog(WindowModalDialog):
                 self.main_window.show_error(str(e), parent=self)
                 return
         self.is_send=True
-        BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
+        self.target=self.qtarget.dateTime().toPyDateTime()
+        if self.asap_check.isChecked():
+            self.target=0
         
+        if self.schedule_check.isChecked():
+            self.delay=self.qdelay.dateTime().toPyDateTime()  
+        else:
+            self.delay = self.main_window.config.get('bitpost_delay', 0)
+            
+        if self.target<self.delay:
+            self.main_window.show_error(_("Target should be greater than delay"))
+            return
+        self.is_send = True
         if self.is_send:
             self.accept()
         else:
             print("ERROR: is_send is false")
+            
+            
+    def on_send(self):
+        BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
+        self.send()
     
     def get_feerates(self, estimated_size):
         if self.config.get('testnet'):
@@ -262,19 +301,15 @@ class ConfirmTxDialog(WindowModalDialog):
             testnet = False
         bitpost_interface = BitpostInterface(testnet=testnet)
         max_feerate = self.calculate_max_feerate(estimated_size, self.fee_combo.currentText())
-        print(max_feerate)
         return bitpost_interface.get_feerates(max_feerate, size=self.num_txs)
 
     def calculate_max_feerate(self, estimated_size, fee_unit):
         raw_max_fee = float(self.max_fees.text())
         if fee_unit == 'sats/byte':
-            print('sats/byte')
             return raw_max_fee
         elif fee_unit == 'sats':
-            print('sats')
             return raw_max_fee/estimated_size
         else:
-            print('else')
             max_sats = 100_000_000*raw_max_fee/float(self.main_window.fx.exchange_rate())
             return max_sats/estimated_size
 
