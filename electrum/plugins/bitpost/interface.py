@@ -207,17 +207,25 @@ class BitpostRequest:
 
     # Warning: untested feature. Currently supported platforms are: twitter (DM), email, webhook
     def add_notification(self, platform, address, subscription=None):
+        if type(subscription) is list:
+            for sub in subscription:
+                self.add_notification(platform, address, sub)
+            return
+
+        platform = platform.lower()
         platforms = set([channel['platform'] for channel in self.notifications])
-        if not platform in platforms:
-            subscriptions = []
-            if subscription != None:
-                subscriptions = [{"name": subscription}]
-            self.notifications.append({"platform": platform, "address": address, "subscriptions": subscriptions})
-        elif subscription != None:
+        if platform in platforms:
             channel = [ch for ch in self.notifications if ch['platform'] == platform][0]
-            existing_subs = [sub['name'] for sub in channel['subscriptions']]
-            if subscription not in existing_subs:
-                channel['subscriptions'].append({'name': subscription})
+            updated_subs = channel['subscriptions']
+        else:
+            channel = {"platform": platform, "address": address}
+            self.notifications.append(channel)
+            updated_subs = []
+        if type(subscription) is dict:
+            updated_subs.append(subscription)
+        elif type(subscription) is str:
+            updated_subs.append({'name': subscription})
+        channel['subscriptions'] = updated_subs
 
 
 class BitpostDownException(Exception):

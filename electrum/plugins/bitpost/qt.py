@@ -92,11 +92,13 @@ class Plugin(BasePlugin):
         platform_combo = QComboBox()
         fee_combo_values = ['None', 'Email', 'Twitter']
         platform_combo.addItems(fee_combo_values)
+        platform_combo.setCurrentText(self.window.config.get('bitpost_notification_platform'))
         platform_address.addWidget(platform_combo)
 
         platform_address.addWidget(QLabel("Address/handle"))
         vbox.addLayout(platform_address)
         address_input = QLineEdit()
+        address_input.setText(self.config.get('bitpost_notification_address', ''))
         platform_address.addWidget(address_input)
 
         subscription_title = QHBoxLayout()
@@ -105,18 +107,30 @@ class Plugin(BasePlugin):
         subscription_title.addStretch()
         vbox.addLayout(subscription_title)
 
+        subscriptions = {subscription['name'] for subscription in self.window.config.get('bitpost_notification_subscriptions')}
         subscriptions1 = QVBoxLayout()
         overdue_checkbox = QCheckBox("Overdue")
+        if 'overdue' in subscriptions:
+            overdue_checkbox.setChecked(True)
         subscriptions1.addWidget(overdue_checkbox)
+
         mined_checkbox = QCheckBox("Mined")
+        if 'mine' in subscriptions:
+            mined_checkbox.setChecked(True)
         subscriptions1.addWidget(mined_checkbox)
         max_fee_reached_checkbox = QCheckBox("Maximum fee reached")
+        if 'reached' in subscriptions:
+            max_fee_reached_checkbox.setChecked(True)
         subscriptions1.addWidget(max_fee_reached_checkbox)
         vbox.addLayout(subscriptions1)
 
         reorg_checkbox = QCheckBox("Block reorg")
+        if 'orphaned_block' in subscriptions:
+            reorg_checkbox.setChecked(True)
         subscriptions1.addWidget(reorg_checkbox)
         orphaned_checkbox = QCheckBox("Child tx orphaned")
+        if '' in subscriptions:
+            orphaned_checkbox.setChecked(True)
         subscriptions1.addWidget(orphaned_checkbox)
 
         advanced_settings_title = QHBoxLayout()
@@ -186,11 +200,11 @@ class Plugin(BasePlugin):
         if overdue_checkbox.isChecked():
             subscriptions.append({'name': 'overdue'})
         if mined_checkbox.isChecked():
-            subscriptions.append({'name': 'mined'})
+            subscriptions.append({'name': 'mine'})
         if max_fee_reached_checkbox.isChecked():
             subscriptions.append({'name': 'reached'})
         if reorg_checkbox.isChecked():
-            subscriptions.append({'name': 'orphan_block'})
+            subscriptions.append({'name': 'orphaned_block'})
         if orphaned_checkbox.isChecked():
             pass # TODO
 
@@ -364,7 +378,11 @@ class Plugin(BasePlugin):
         self.config.set_key('bitpost_delay', self.delay)
 
         self.config.set_key('bitpost_target_interval', self.target_interval)
-        self.config.set_key('bitpost_notification_platform', self.config.get('bitpost_notification_platform'), self.default_notification_platform)
+        self.config.set_key('bitpost_notification_platform', self.config.get('bitpost_notification_platform'),
+                            self.default_notification_platform)
+
+        self.config.set_key('bitpost_notification_address', self.config.get('bitpost_notification_address'), '')
+        self.config.set_key('bitpost_notification_subscriptions', self.config.get('bitpost_notification_subscriptions'), [])
 
     @hook
     def close_wallet(self, wallet):
