@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,QLineEdit, QComboBox)
 from electrum.gui.qt.util import (Buttons, CloseButton, OkButton, WindowModalDialog, get_parent_main_window)
 from electrum.i18n import _
-
+import re
 
 def get_fee_units(main_window, default):
     fee_combo_values = ['sats', 'sats/byte']
@@ -19,25 +19,21 @@ class HelpTexts:
               'The actual fee you will pay will likely be lower than the amount you choose, especially' \
               'if you choose a high value. You can choose a maximum in fiat if you enabled a fiat currency' \
               'under Tools > Preferences > Fiat'
-    # TODO
+
     subscriptions = 'You can subscribe to notifications about important events regarding your payments.' \
                     'Here is a explanation of the avaible events/subscriptions:\n' \
                     '- Overdue: the payment hasn\'t been confirmed before the chosen deadline.\n' \
                     '- Mined: the payment has been mined/confirmed.\n' \
                     '- Maximum fee reached: the transaction with the maximum fee has been broadcasted....\n' \
-                    '...'
+                    '- Block reorganization: a chainsplit has occured and your previously confirmed transaction may ' \
+                    'have become unconfirmed again.\n' \
+                    '- Child transaction orphaned: an old transaction in the parent payment was confirmed making it' \
+                    'impossible for the child payment to be executed. This is an unlikely scenario that will better' \
+                    'handled in a posterior release of the plugin.'
 
     num_txs = 'The number of transactions that will be broadcasted by default to bitpost.'
     delay = 'When you schedule a payment with a deadline far into the future, bitpost may choose to broadcast the' \
             'first transaction posteriorly. You may allow or disallow this practice.'
-
-
-def is_valid_settings(max_fee_input):
-    try:
-        int(max_fee_input)
-        return True
-    except:
-        return False
 
 
 def create_settings_window(small_window):
@@ -117,11 +113,11 @@ def create_settings_window(small_window):
     subscriptions1.addWidget(max_fee_reached_checkbox)
     vbox.addLayout(subscriptions1)
 
-    reorg_checkbox = QCheckBox("Block reorg")
+    reorg_checkbox = QCheckBox("Block reorganization")
     if 'orphaned_block' in subscriptions:
         reorg_checkbox.setChecked(True)
     subscriptions1.addWidget(reorg_checkbox)
-    orphaned_checkbox = QCheckBox("Child tx orphaned")
+    orphaned_checkbox = QCheckBox("Child transaction orphaned")
     if '' in subscriptions:
         orphaned_checkbox.setChecked(True)
     subscriptions1.addWidget(orphaned_checkbox)
@@ -196,12 +192,20 @@ def create_settings_window(small_window):
         create_settings_window(small_window)
 
     if not valid_address(platform_combo.currentText(), address_input.text()):
-        d.show_error('Invalid handle/address for the given platform')
+        d.show_error('Invalid handle/address for ' + platform_combo.currentText())
         create_settings_window(small_window)
-
 
     window.config.set_key('bitpost_notification_address', address_input.text())
 
 
 def valid_address(platform, address):
-    return 3 < len(address) < 100  # TODO
+    if platform.lower() == 'none':
+        return True
+    elif not 1 <= len(address) < 200:
+        return False
+    elif platform.lower() == 'email':
+        return re.match('^[^@]+@[^@]+\.[^@]+$', address)
+    elif platform.lower() == 'twitter':
+        return re.match('^[a-zA-Z0-9_]{1,15}$', address)
+    else:
+        return True
