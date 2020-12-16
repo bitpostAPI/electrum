@@ -1,7 +1,5 @@
-from electrum.gui.qt.util import (EnterButton, Buttons, CloseButton, OkButton, WindowModalDialog, get_parent_main_window)
-from electrum.gui.qt.main_window import ElectrumWindow
-from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QInputDialog, QPushButton, QCheckBox,QLineEdit, QComboBox)
-from functools import partial
+from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,QLineEdit, QComboBox)
+from electrum.gui.qt.util import (Buttons, CloseButton, OkButton, WindowModalDialog, get_parent_main_window)
 from electrum.i18n import _
 
 
@@ -21,7 +19,7 @@ class HelpTexts:
               'The actual fee you will pay will likely be lower than the amount you choose, especially' \
               'if you choose a high value. You can choose a maximum in fiat if you enabled a fiat currency' \
               'under Tools > Preferences > Fiat'
-
+    # TODO
     subscriptions = 'You can subscribe to notifications about important events regarding your payments.' \
                     'Here is a explanation of the avaible events/subscriptions:\n' \
                     '- Overdue: the payment hasn\'t been confirmed before the chosen deadline.\n' \

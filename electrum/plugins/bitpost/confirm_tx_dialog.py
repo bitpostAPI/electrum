@@ -1,132 +1,19 @@
 #!/usr/bin/env python
-
-
-from decimal import Decimal
 from typing import TYPE_CHECKING, Optional, Union
-
 from PyQt5.QtWidgets import  QVBoxLayout, QLabel, QGridLayout, QPushButton, QLineEdit, QCalendarWidget, QComboBox,QHBoxLayout,QDateTimeEdit, QListWidget,QCheckBox,QSizePolicy
 from PyQt5.QtCore import QDate,QDateTime
-
 from electrum.i18n import _
 from electrum.util import NotEnoughFunds, NoDynamicFeeEstimates
-from electrum.plugin import run_hook
-from electrum.transaction import Transaction, PartialTransaction
-from electrum.simple_config import FEERATE_WARNING_HIGH_FEE, FEE_RATIO_HIGH_WARNING
 from electrum.wallet import InternalAddressCorruption
-
-from electrum.gui.qt.util import (WindowModalDialog, ColorScheme, HelpLabel, Buttons, CancelButton,
-                   BlockingWaitingDialog, PasswordLineEdit)
-
-from electrum.gui.qt.fee_slider import FeeSlider, FeeComboBox
-
-import requests
+from electrum.gui.qt.util import (WindowModalDialog, Buttons, CancelButton, BlockingWaitingDialog, PasswordLineEdit)
 from .interface import BitpostInterface, BitpostDownException
 from .utils import get_fee_units
+from .preview_tx_dialog import PreviewTxsDialog
 from datetime import datetime
-import time
-
 if TYPE_CHECKING:
     from electrum.gui.qt.main_window import ElectrumWindow
 
-    
-class Exchange():
-    def __init__(self,fx):
-        self.rate=float(fx.exchange_rate())
-        self.currency=fx.get_currency()
-        
-    def str_exchange(self,value,r=2):
-        return "({}{})".format(round(value/self.rate,r),self.currency)
-                
-class PreviewTxsDialog(WindowModalDialog):
-    def __init__(self, *, window:'ElectrumWindow',txs, password,is_sweep):
-    
-        WindowModalDialog.__init__(self,window,_('BitPost Transactions Preview'))
-        self.setMinimumSize(800, 600)
-        self.main_window=window
-        self.txs=txs
-        self.password_required = self.main_window.wallet.has_keystore_encryption() and not is_sweep
-        self.is_send=False
-        vbox=QVBoxLayout()
-        self.setLayout(vbox)
-        lbox=QListWidget()
-   
-        items=[]
-        for tx in txs:
-            inputs=tx.inputs()
-            outputs=tx.outputs()
-            fee = tx.get_fee()
-            fiat=False
-            
-            text = "fee: {}".format(fee)
-            if self.main_window.fx and self.main_window.fx.is_enabled():
-                fiat=Exchange(self.main_window.fx)
-                text+=fiat.str_exchange(fee)
-                   
-            text += "\t\tvbyte: {}\n".format(tx.estimated_size())
-            
-            tmp = "fee/vbyte: {}".format(round(fee/tx.estimated_size(),2))
-            if fiat:
-                tmp += fiat.str_exchange(fee/tx.estimated_size())
-            text += tmp
-            if len(tmp) > 22: tab="\t"
-            else: tab="\t\t"
-            print(tmp,len(tmp),len(tmp)/4)
-            text += "{}total size: {}\n".format(tab, 
-                tx.estimated_total_size())
-                
-            text += "INPUTS:\n"
-            for i in inputs:
-                text += "{}:{} = {}".format(
-                    i.prevout.txid.hex(),
-                    i.prevout.out_idx, 
-                    i.value_sats())
-                if fiat:
-                    text += fiat.str_exchange(i.value_sats())
-                text += "\n"
-            text += "OUTPUTS:\n"         
-            for o in outputs:
-                text+="{} = {}".format(o.address,o.value)
-                if fiat:
-                    text += fiat.str_exchange(o.value)
-                text += "\n" 
-                
-            items.append(text)
-            
-        lbox.addItems(items)
-        vbox.addWidget(lbox)
-        
-        self.send_button = QPushButton(_('Send'))
-        self.send_button.clicked.connect(self.on_send)
-        self.send_button.setDefault(True)
 
-        self.pw_label = QLabel(_('Password'))
-        self.pw_label.setVisible(self.password_required)
-        self.pw = PasswordLineEdit(password)
-        self.pw.setVisible(self.password_required)
-        
-        vbox.addLayout(Buttons(CancelButton(self), self.pw_label,self.pw,self.send_button))
-        
-    def run(self):
-        cancelled = not self.exec_()
-        password = self.pw.text() or None
-        return cancelled, self.is_send, password
-        
-    def on_send(self):
-        """
-        password = self.pw.text() or None
-        if self.password_required:
-            if password is None:
-                self.main_window.show_error(_("Password required"), parent=self)
-                return
-            try:
-                self.main_window.wallet.check_password(password)
-            except Exception as e:
-                self.main_window.show_error(str(e), parent=self)
-                return
-        """
-        self.is_send=True
-        self.accept()
-      
 class ConfirmTxDialog(WindowModalDialog):
     # set fee and return password (after pw check)
 
@@ -150,13 +37,14 @@ class ConfirmTxDialog(WindowModalDialog):
 
         self.num_txs = int(window.config.get('bitpost_num_txs'))
 
-       
+        self.build_gui()
+
+    def build_gui(self):
         vbox = QVBoxLayout()
         self.setLayout(vbox)
         grid = QGridLayout()
         vbox.addLayout(grid)
         self.amount_label = QLabel('')
-        
 
         grid.addWidget(QLabel(_("Target for confirmation")),0,0)
         self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_interval'))*60))
@@ -167,11 +55,11 @@ class ConfirmTxDialog(WindowModalDialog):
         grid.addWidget(self.asap_check,0,2)
            
         grid.addWidget(QLabel(_("Maximum Fee")),2,0)
-        self.max_fees = QLineEdit(str(window.config.get('bitpost_max_fee')))
+        self.max_fees = QLineEdit(str(self.main_window.config.get('bitpost_max_fee')))
         self.max_fees.textChanged.connect(self.change_max_fees)
         grid.addWidget(self.max_fees,2,1)                
         self.fee_combo=QComboBox()
-        fee_combo_values = get_fee_units(window, window.config.get('bitpost_max_fee_unit'))
+        fee_combo_values = get_fee_units(self.main_window, self.main_window.config.get('bitpost_max_fee_unit'))
         self.fee_combo.addItems(fee_combo_values)
         grid.addWidget(self.fee_combo,2,2)
 
@@ -202,7 +90,6 @@ class ConfirmTxDialog(WindowModalDialog):
         self.preview_button.clicked.connect(self.on_preview)
         self.preview_button.setDefault(True)
 
-        
         vbox.addLayout(Buttons(CancelButton(self), self.preview_button,self.send_button))
 
         # set default to ASAP checked
@@ -228,11 +115,8 @@ class ConfirmTxDialog(WindowModalDialog):
 
         else:
             self.qdelay.setVisible(False)
+
     def change_max_fees(self):
-        """
-        TODO
-        check user input data
-        """
         pass
         
     def default_message(self):
@@ -283,8 +167,7 @@ class ConfirmTxDialog(WindowModalDialog):
             self.accept()
         else:
             print("ERROR: is_send is false")
-            
-            
+
     def on_send(self):
         BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
         self.send()
@@ -327,14 +210,6 @@ class ConfirmTxDialog(WindowModalDialog):
             self.not_enough_funds = True
             self.txs = None
             return
-            """if fallback_to_zero_fee:
-                try:
-                    self.txs = [self.make_tx(0)]
-                except BaseException:
-                    return
-            else:
-                return
-            """
         except NoDynamicFeeEstimates:
             self.no_dynfee_estimates = True
             self.txs = None

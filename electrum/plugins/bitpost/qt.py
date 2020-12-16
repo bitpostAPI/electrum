@@ -1,23 +1,12 @@
 #!/usr/bin/env python
-from electrum.plugin import BasePlugin, hook
-from electrum.gui.qt.util import (EnterButton, Buttons, CloseButton, OkButton, WindowModalDialog, get_parent_main_window)
-from electrum.gui.qt.main_window import ElectrumWindow
-from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QInputDialog, QPushButton, QCheckBox,QLineEdit, QComboBox)
 from functools import partial
-from electrum.i18n import _
-from .confirm_tx_dialog import ConfirmTxDialog,PreviewTxsDialog
-
-from typing import Optional, TYPE_CHECKING, Sequence, List, Union
-
-from electrum.invoices import PR_TYPE_ONCHAIN, PR_TYPE_LN, PR_DEFAULT_EXPIRATION_WHEN_CREATING, Invoice
-from electrum.invoices import PR_PAID, PR_FAILED, pr_expiration_values, LNInvoice, OnchainInvoice
-from electrum.transaction import (Transaction, PartialTxInput,
-                                  PartialTransaction, PartialTxOutput)
-                                  
-from electrum.util import NotEnoughFunds                                
-                                  
-from .interface import BitpostInterface
 from datetime import datetime
+from electrum.plugin import BasePlugin, hook
+from electrum.gui.qt.util import (EnterButton, get_parent_main_window)
+from electrum.util import NotEnoughFunds
+from electrum.i18n import _
+from .confirm_tx_dialog import ConfirmTxDialog
+from .interface import BitpostInterface
 from .utils import create_settings_window
                                   
                                   
@@ -37,12 +26,10 @@ class Plugin(BasePlugin):
         
     def requires_settings(self):
         return True
-        
 
     def settings_widget(self, window): 
         # Return a button that when pressed presents a settings dialog.
         return EnterButton(_("Settings"), partial(self.settings_dialog, window))
-
 
     def settings_dialog(self, window):
         create_settings_window(window)
@@ -70,26 +57,18 @@ class Plugin(BasePlugin):
             raise NotEnoughFunds
         return tx_out
 
-        
-        
     def send_txs(self,txs,password,target,delay):
             pass
         
     def display_bitpost(self,dialog):
         self.window = window = get_parent_main_window(dialog)
-        
-        external_keypairs=None
-        raw_signed_txs=[]
 
         invoice = window.read_invoice()       
         if not invoice:
             print("BitPostPlugin: Invoice is Null")
             return
-        #print(dir(invoice))
-        #print(invoice)
-       
-        window.wallet.save_invoice(invoice)
 
+        window.wallet.save_invoice(invoice)
         window.invoice_list.update()
         window.do_clear()
         
@@ -106,7 +85,6 @@ class Plugin(BasePlugin):
             tx=base_tx,
             new_fee= new_fee,
             coins=inputs)
-    
 
         output_values = [x.value for x in outputs]
         if output_values.count('!') > 1:
@@ -118,78 +96,71 @@ class Plugin(BasePlugin):
             output_value=output_value, is_sweep=is_sweep)
 
         if d.not_enough_funds:
-            # Check if we had enough funds excluding fees,
-            # if so, still provide opportunity to set lower fees.
+            # Check if we had enough funds excluding fees, if so, still provide opportunity to set lower fees.
             if not d.have_enough_funds_assuming_zero_fees():
                 self.show_message(_('Not Enough Funds'))
                 return
-        """            
-        # shortcut to advanced preview (after "enough funds" check!)
-        if self.config.get('advanced_preview'):
-            self.preview_tx_dialog(make_tx=make_tx,
-                external_keypairs=external_keypairs)
+
+        self.send_bitpost_request(d, invoice)
+
+    def send_bitpost_request(self, dialog, invoice):
+        window = get_parent_main_window(dialog)
+
+        cancelled, is_send, password, txs, target, delay = dialog.run()
+        if cancelled or not is_send:
             return
-        """
-        
-        cancelled, is_send, password, txs, target, delay = d.run()
-        if cancelled:
+
+        raw_signed_txs = []
+        print("TXS BATCH SIZE",len(txs))
+        for tx in txs:
+            print("----------------")
+            print("FEE",tx.get_fee())
+            print("****************************")
+            window.wallet.sign_transaction(tx,password)
+            print("SERIALIZED", tx.serialize_to_network())
+            raw_signed_txs.append(tx.serialize_to_network())
+            print("****************************")
+
+        print("transactions signed")
+        try:
+            delay = delay.timestamp()
+        except:
+            delay = self.config.get('bitpost_delay')
+
+        now=datetime.now().timestamp()
+        if target < delay:
+            window.show_error(_("Target should be greater than delay"))
             return
-        if is_send:
-            print("TXS BATCH SIZE",len(txs))
-            for tx in txs:
-            
-                print("----------------")      
-                print("FEE",tx.get_fee())
-                print("****************************")
-                window.wallet.sign_transaction(tx,password)
-                print("SERIALIZED", tx.serialize_to_network())
-                raw_signed_txs.append(tx.serialize_to_network())
-                print("****************************")
-            
+        if now > target:
+            target= now + 600
+        if now > delay:
+            delay = 0
 
-            print("transactions signed")
-            try:
-                delay = delay.timestamp()
-            except:
-                delay = self.config.get('bitpost_delay')
-                
-            now=datetime.now().timestamp()
-            if target < delay:
-                window.show_error(_("Target should be greater than delay"))
-                return
-            if now > target:
-                target= now + 600
-            if now > delay:
-                delay = 0
-                
-            if self.config.get('testnet'):
-                testnet = True
-            else:
-                testnet = False
-            bitpost_interface = BitpostInterface(testnet=testnet)
-            
-            request = bitpost_interface.create_bitpost_request(raw_signed_txs, 
-                                                int(target), delay=int(delay))
-
-            if self.config.get('bitpost_notification_platform') != 'None':
-                request.add_notification(self.config.get('bitpost_notification_platform'),
-                                         self.config.get('bitpost_notification_address'),
-                                         self.config.get('bitpost_notification_subscriptions'))
-
-            response=request.send_request().json()
-            if response['status'] == 'success':
-                if len(invoice.message)>0:
-                    invoice.message += "\n"
-                invoice.message += response['data']['url']
-            
-                window.wallet.save_invoice(invoice)
-
-                window.invoice_list.update()
-                window.do_clear()
-                   
+        if self.config.get('testnet'):
+            testnet = True
         else:
-            return
-        
+            testnet = False
+        bitpost_interface = BitpostInterface(testnet=testnet)
+
+        request = bitpost_interface.create_bitpost_request(raw_signed_txs,
+                                            int(target), delay=int(delay))
+
+        if self.config.get('bitpost_notification_platform') != 'None':
+            request.add_notification(self.config.get('bitpost_notification_platform'),
+                                     self.config.get('bitpost_notification_address'),
+                                     self.config.get('bitpost_notification_subscriptions'))
+
+        response=request.send_request().json()
+        if response['status'] == 'success':
+            if len(invoice.message)>0:
+                invoice.message += "\n"
+            invoice.message += response['data']['url']
+
+            window.wallet.save_invoice(invoice)
+
+            window.invoice_list.update()
+            window.do_clear()
+
     @hook
     def load_wallet(self, wallet, main_window):
         self.wallet=wallet
@@ -233,6 +204,6 @@ class Plugin(BasePlugin):
 
     @hook
     def create_send_tab(self, grid):
-        button = EnterButton(_("BitPost"),lambda: self.display_bitpost(grid))
+        button = EnterButton(_("Pay with Bitpost..."),lambda: self.display_bitpost(grid))
         grid.addWidget(button,6,5)
         button.show()
