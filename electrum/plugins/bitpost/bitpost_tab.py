@@ -54,9 +54,9 @@ class BitPostList(MyTreeView):
         invoices=self.parent.wallet.get_invoices()
         for idx,invoice in enumerate(invoices):
             mex=invoice.message
-            self.insert_invoice(idx,invoice)
+            self.insert_invoice(invoice)
         self.filter()
-    def insert_invoice(self,idx,invoice):
+    def insert_invoice(self,invoice):
         try:
             invoice_date=invoice.time
             message_split=re.split("https\:\/\/(?:testnet\-)?api\.bitpost\.co/explorer\?query\=(.{11})\,(\d*)\,(\d*)",invoice.message)

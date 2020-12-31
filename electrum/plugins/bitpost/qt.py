@@ -2,14 +2,15 @@
 from functools import partial
 from datetime import datetime
 from electrum.plugin import BasePlugin, hook
-from electrum.gui.qt.util import (EnterButton, get_parent_main_window)
+from electrum.gui.qt.util import (EnterButton, get_parent_main_window, read_QIcon)
 from electrum.util import NotEnoughFunds
 from electrum.i18n import _
 from .confirm_tx_dialog import ConfirmTxDialog
+from .bitpost_tab import BitPostList                                  
 from .interface import BitpostInterface
 from .utils import create_settings_window
-                                  
-                                  
+
+                              
 class Plugin(BasePlugin):
 
     default_max_fee = 1000
@@ -46,7 +47,7 @@ class Plugin(BasePlugin):
                 
                 coco.append(c)
         try:
-            print(str(new_fee) + "bump fee method 1")
+            self.window.logger.debug(str(new_fee) + "bump fee method 1")
             tx_out= self.window.wallet._bump_fee_through_coinchooser(
                 tx=tx,
                 new_fee_rate= new_fee,
@@ -65,7 +66,7 @@ class Plugin(BasePlugin):
 
         invoice = window.read_invoice()       
         if not invoice:
-            print("BitPostPlugin: Invoice is Null")
+            self.window.logger.exception("BitPostPlugin: Invoice is Null")
             return
 
         window.wallet.save_invoice(invoice)
@@ -111,17 +112,19 @@ class Plugin(BasePlugin):
             return
 
         raw_signed_txs = []
-        print("TXS BATCH SIZE",len(txs))
+        window.logger.debug("TXS BATCH SIZE",len(txs))
+        max_fee=0
         for tx in txs:
-            print("----------------")
-            print("FEE",tx.get_fee())
-            print("****************************")
+            window.logger.debug("----------------")
+            window.logger.debug("FEE",tx.get_fee())
+            max_fee=max(max_fee,tx.get_fee())
+            window.logger.debug("****************************")
             window.wallet.sign_transaction(tx,password)
-            print("SERIALIZED", tx.serialize_to_network())
+            window.logger.debug("SERIALIZED", tx.serialize_to_network())
             raw_signed_txs.append(tx.serialize_to_network())
-            print("****************************")
+            window.logger.debug("****************************")
 
-        print("transactions signed")
+        window.logger.debug("transactions signed")
         try:
             delay = delay.timestamp()
         except:
@@ -154,12 +157,14 @@ class Plugin(BasePlugin):
         if response['status'] == 'success':
             if len(invoice.message)>0:
                 invoice.message += "\n"
-            invoice.message += response['data']['url']
+            invoice.message += "{},{},{}".format(response['data']['url'], delay, target)
 
             window.wallet.save_invoice(invoice)
 
             window.invoice_list.update()
+            self.bitpost_list.insert_invoice(invoice)
             window.do_clear()
+            
 
     @hook
     def load_wallet(self, wallet, main_window):
@@ -186,6 +191,12 @@ class Plugin(BasePlugin):
         self.config.set_key('bitpost_notification_address', self.config.get('bitpost_notification_address', ''))
         self.config.set_key('bitpost_notification_subscriptions', self.config.get('bitpost_notification_subscriptions', []))
 
+
+        self.bitpost_list = BitPostList(self.window)
+        self.window.tabs.addTab(self.window.create_list_tab(self.bitpost_list), read_QIcon("tab_bitpost.png"), _('BitPost'))
+        
+        
+        
     @hook
     def close_wallet(self, wallet):
         self.wallet=None
@@ -207,3 +218,5 @@ class Plugin(BasePlugin):
         button = EnterButton(_("Pay with Bitpost..."),lambda: self.display_bitpost(grid))
         grid.addWidget(button,6,5)
         button.show()
+
+    

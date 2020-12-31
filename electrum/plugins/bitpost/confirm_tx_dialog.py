@@ -47,7 +47,7 @@ class ConfirmTxDialog(WindowModalDialog):
         self.amount_label = QLabel('')
 
         grid.addWidget(QLabel(_("Target for confirmation")),0,0)
-        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(window.config.get('bitpost_target_interval'))*60))
+        self.qtarget=QDateTimeEdit(QDateTime.currentDateTime().addSecs(int(self.main_window.config.get('bitpost_target_interval'))*60))
         grid.addWidget(self.qtarget,0,1) 
 
         self.asap_check=QCheckBox("ASAP")
@@ -208,17 +208,17 @@ class ConfirmTxDialog(WindowModalDialog):
             self.no_dynfee_estimates = False
         except NotEnoughFunds:
             self.not_enough_funds = True
-            self.txs = None
+            self.txs = []
             return
         except NoDynamicFeeEstimates:
             self.no_dynfee_estimates = True
-            self.txs = None
+            self.txs = []
             try:
                 self.txs = [self.make_tx(0)]
             except BaseException:
                 return
         except InternalAddressCorruption as e:
-            self.txs = None
+            self.txs = []
             self.main_window.show_error(str(e))
             raise
         except BitpostDownException:
