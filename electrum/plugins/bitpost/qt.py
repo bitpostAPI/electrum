@@ -52,8 +52,10 @@ class Plugin(BasePlugin):
                 tx=tx,
                 new_fee_rate= new_fee,
                 coins=coco)
-            
-        except:
+
+        except Exception as ex:
+            if all(self.wallet.is_mine(o.address) for o in list(tx.outputs())):
+                raise ex
             self.window.show_error(_("Not enought funds, please add more inputs or reduce max fee"))
             raise NotEnoughFunds
         return tx_out

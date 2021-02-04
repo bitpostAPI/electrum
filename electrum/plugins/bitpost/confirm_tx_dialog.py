@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import  QVBoxLayout, QLabel, QGridLayout, QPushButton, QLin
 from PyQt5.QtCore import QDate,QDateTime
 from electrum.i18n import _
 from electrum.util import NotEnoughFunds, NoDynamicFeeEstimates
-from electrum.wallet import InternalAddressCorruption
+from electrum.wallet import InternalAddressCorruption, CannotBumpFee
 from electrum.gui.qt.util import (WindowModalDialog, Buttons, CancelButton, BlockingWaitingDialog, PasswordLineEdit)
 from .interface import BitpostInterface, BitpostDownException
 from .utils import get_fee_units
@@ -192,6 +192,36 @@ class ConfirmTxDialog(WindowModalDialog):
             return max_sats/estimated_size
 
     def prepare_txs(self):
+        try:
+            self.prepare_txs_by_bumping_fee()
+        except CannotBumpFee as ex:
+            self.prepare_txs_manually()
+
+    def prepare_txs_manually(self):
+        max_fee = int(200*self.calculate_max_feerate(200, self.fee_combo.currentText()))
+        highest_fee_tx = self.make_tx(max_fee)
+
+        est_size = highest_fee_tx.estimated_size()
+        max_fee = int(est_size * self.calculate_max_feerate(est_size, self.fee_combo.currentText()))
+        highest_fee_tx = self.make_tx(max_fee)
+
+        can_be_change = lambda o: self.main_window.wallet.is_change(o.address) and self.main_window.wallet.is_mine(o.address)
+        change_index = max([i for i in range(len(highest_fee_tx.outputs())) if can_be_change(highest_fee_tx.outputs()[i])])
+        max_feerate = (highest_fee_tx.input_value() - highest_fee_tx.output_value())/highest_fee_tx.estimated_size()
+        feerates = self.get_feerates(max_feerate)
+
+        highest_fee_tx.set_rbf(True)
+        self.txs = []
+        for fee in feerates:
+            tx = self.main_window.wallet.make_unsigned_transaction(coins=highest_fee_tx.inputs(), outputs=highest_fee_tx.outputs())
+            new_change = highest_fee_tx.outputs()[change_index].value + int(abs(max_feerate-fee)*highest_fee_tx.estimated_size())
+            tx.outputs()[change_index].value = new_change
+            self.txs.append(tx)
+
+        self.not_enough_funds = False
+        self.no_dynfee_estimates = False
+
+    def prepare_txs_by_bumping_fee(self):
         try:
             base_tx = self.make_tx(1)
             est_size = base_tx.estimated_size()
