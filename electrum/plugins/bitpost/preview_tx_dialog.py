@@ -9,7 +9,7 @@ class Exchange():
         self.currency = fx.get_currency()
 
     def str_exchange(self, value, r=2):
-        return "({}{})".format(round(value / self.rate, r), self.currency)
+        return "({}{})".format(round(value * self.rate / 100000000, r), self.currency)
 
 
 class PreviewTxsDialog(WindowModalDialog):
@@ -47,7 +47,7 @@ class PreviewTxsDialog(WindowModalDialog):
                 tab = "\t"
             else:
                 tab = "\t\t"
-            print(tmp, len(tmp), len(tmp) / 4)
+
             text += "{}total size: {}\n".format(tab,
                                                 tx.estimated_total_size())
 

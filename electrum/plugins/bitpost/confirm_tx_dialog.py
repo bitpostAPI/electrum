@@ -17,13 +17,12 @@ if TYPE_CHECKING:
 class ConfirmTxDialog(WindowModalDialog):
     # set fee and return password (after pw check)
 
-    def __init__(self, *, window: 'ElectrumWindow', make_tx, bump_fee, output_value: Union[int, str], is_sweep: bool):
+    def __init__(self, *, window: 'ElectrumWindow', inputs, outputs, output_value: Union[int, str], is_sweep: bool):
         WindowModalDialog.__init__(self, window, _("BitPost Confirm Transaction"))
         self.main_window = window
-        self.make_tx = make_tx
-        self.bump_fee=bump_fee
+        self.inputs = inputs
+        self.outputs = outputs
         self.output_value = output_value
-
         self.delay = None
         self.target = None
         self.txs = []
@@ -34,8 +33,10 @@ class ConfirmTxDialog(WindowModalDialog):
         self.needs_update = False
         self.is_sweep=is_sweep
         self.password_required = self.wallet.has_keystore_encryption() and not is_sweep
-
         self.num_txs = int(window.config.get('bitpost_num_txs'))
+        
+        self.imax_fees = 0
+        self.imax_size = 0
 
         self.build_gui()
 
@@ -125,6 +126,8 @@ class ConfirmTxDialog(WindowModalDialog):
     def on_preview(self):
         password = self.pw.text() or None
         BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
+        if len(self.txs) <= 0:
+            return
         d = PreviewTxsDialog(window=self.main_window,txs=self.txs,password=password,is_sweep=self.is_sweep)
         cancelled, is_send, password = d.run()
         if cancelled:
@@ -136,7 +139,7 @@ class ConfirmTxDialog(WindowModalDialog):
     def run(self):
         cancelled = not self.exec_()
         password = self.pw.text() or None
-        return cancelled, self.is_send, password, self.txs, self.target, self.delay
+        return cancelled, self.is_send, password, self.txs, self.target, self.delay, self.imax_fees, self.imax_size
 
     def send(self):
         password = self.pw.text() or None
@@ -170,6 +173,8 @@ class ConfirmTxDialog(WindowModalDialog):
 
     def on_send(self):
         BlockingWaitingDialog(self.main_window, _("Preparing transaction..."), self.prepare_txs)
+        if len(self.txs) <= 0:
+            return
         self.send()
     
     def get_feerates(self, estimated_size):
@@ -201,8 +206,8 @@ class ConfirmTxDialog(WindowModalDialog):
         max_fee = int(200*self.calculate_max_feerate(200, self.fee_combo.currentText()))
         highest_fee_tx = self.make_tx(max_fee)
 
-        est_size = highest_fee_tx.estimated_size()
-        max_fee = int(est_size * self.calculate_max_feerate(est_size, self.fee_combo.currentText()))
+        self.max_size = est_size = highest_fee_tx.estimated_size()
+        self.max_fees = max_fee = int(est_size * self.calculate_max_feerate(est_size, self.fee_combo.currentText()))
         highest_fee_tx = self.make_tx(max_fee)
 
         can_be_change = lambda o: self.main_window.wallet.is_change(o.address) and self.main_window.wallet.is_mine(o.address)
@@ -233,25 +238,60 @@ class ConfirmTxDialog(WindowModalDialog):
                 tx=self.bump_fee(base_tx,fee)
                 tx.set_rbf(True)
                 self.txs.append(tx)
-                
+                self.imax_fees=max(self.imax_fees, tx.get_fee())
+                self.imax_size=max(self.imax_size, tx.estimated_size())
             self.not_enough_funds = False
             self.no_dynfee_estimates = False
         except NotEnoughFunds:
             self.not_enough_funds = True
-            self.txs = []
+            self.txs = [] 
             return
         except NoDynamicFeeEstimates:
             self.no_dynfee_estimates = True
             self.txs = []
-            try:
+            try:            
                 self.txs = [self.make_tx(0)]
             except BaseException:
                 return
         except InternalAddressCorruption as e:
             self.txs = []
             self.main_window.show_error(str(e))
-            raise
+            return
         except BitpostDownException:
             self.main_window.show_error(_("Fee Rates Service Not Available"), parent=self)
             self.is_send = False
             return
+        except Exception as e:
+            self.txs = []
+            print("Exception",e)
+            self.main_window.show_error(_("Exception: "+str(e)), parent=self.main_window)
+            return
+    def bump_fee(self, tx, new_fee):
+        
+        inputs=tx.inputs()
+        coco=[]
+        for c in self.inputs:
+            if c not in inputs:
+                
+                coco.append(c)
+        try:
+            self.main_window.logger.debug(str(new_fee) + "bump fee method 1")
+            tx_out= self.main_window.wallet._bump_fee_through_coinchooser(
+                tx=tx,
+                new_fee_rate= new_fee,
+                coins=coco)
+
+        except Exception as ex:
+            if all(self.main_window.wallet.is_mine(o.address) for o in list(tx.outputs())):
+                raise ex
+            self.window.show_error(_("Not enought funds, please add more inputs or reduce max fee"))
+            raise NotEnoughFunds
+        return tx_out
+        
+    def make_tx(self, fee_est):
+
+        return self.main_window.wallet.make_unsigned_transaction(
+            coins=self.inputs,
+            outputs=self.outputs,
+            fee=fee_est,
+            is_sweep=self.is_sweep)

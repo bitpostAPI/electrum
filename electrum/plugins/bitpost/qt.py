@@ -9,8 +9,7 @@ from .confirm_tx_dialog import ConfirmTxDialog
 from .bitpost_tab import BitPostList                                  
 from .interface import BitpostInterface
 from .utils import create_settings_window
-
-                              
+                   
 class Plugin(BasePlugin):
 
     default_max_fee = 1000
@@ -38,34 +37,14 @@ class Plugin(BasePlugin):
     def valid_address(self, platform, address):
         return True  # TODO validation
 
-    def bump_fee(self, tx, new_fee, coins):
-        
-        inputs=tx.inputs()
-        coco=[]
-        for c in coins:
-            if c not in inputs:
-                
-                coco.append(c)
-        try:
-            self.window.logger.debug(str(new_fee) + "bump fee method 1")
-            tx_out= self.window.wallet._bump_fee_through_coinchooser(
-                tx=tx,
-                new_fee_rate= new_fee,
-                coins=coco)
 
-        except Exception as ex:
-            if all(self.wallet.is_mine(o.address) for o in list(tx.outputs())):
-                raise ex
-            self.window.show_error(_("Not enought funds, please add more inputs or reduce max fee"))
-            raise NotEnoughFunds
-        return tx_out
 
     def send_txs(self,txs,password,target,delay):
             pass
         
     def display_bitpost(self,dialog):
         self.window = window = get_parent_main_window(dialog)
-
+        print(dir(window.wallet))
         invoice = window.read_invoice()       
         if not invoice:
             self.window.logger.exception("BitPostPlugin: Invoice is Null")
@@ -74,28 +53,47 @@ class Plugin(BasePlugin):
         window.wallet.save_invoice(invoice)
         window.invoice_list.update()
         window.do_clear()
-        
-        inputs = window.get_coins()
+
+        tinputs = window.get_coins(nonlocal_only=True)
+        inputs=[]
+        history=window.wallet.get_full_history().values()
+
+        print(dir(history))
+        for i in tinputs:
+            #print(dir(i))
+
+            found=False
+            ihash=i.to_json()['prevout_hash']
+            for h in history:
+
+
+                if h['confirmations'] == 0:
+                    tx= window.wallet.db.get_transaction(h['txid'])
+                    tx_inputs=tx.inputs()
+                    for txin in tx_inputs:
+                        thash=txin.to_json()['prevout_hash']
+                        if ihash == thash:
+                            found=True
+                
+            if not found:
+                print("append",i.to_json())
+                inputs.append(i)
+            else:
+                pass
+                #print("-----FOUND---------",i.to_json())
+
+        for i in inputs:
+            print(i.to_json())
         outputs = invoice.outputs
 
-        is_sweep = bool(None)
-        make_tx = lambda fee_est: window.wallet.make_unsigned_transaction(
-            coins=inputs,
-            outputs=outputs,
-            fee=fee_est,
-            is_sweep=is_sweep)
-        bump_fee= lambda base_tx,new_fee: self.bump_fee(
-            tx=base_tx,
-            new_fee= new_fee,
-            coins=inputs)
 
         output_values = [x.value for x in outputs]
         if output_values.count('!') > 1:
             window.show_error(_("More than one output set to spend max"))
             return
-
+        is_sweep = bool(None)
         output_value = '!' if '!' in output_values else sum(output_values)
-        d = ConfirmTxDialog(window=window, make_tx=make_tx, bump_fee=bump_fee, 
+        d = ConfirmTxDialog(window=window, inputs=inputs, outputs=outputs, 
             output_value=output_value, is_sweep=is_sweep)
 
         if d.not_enough_funds:
@@ -109,7 +107,7 @@ class Plugin(BasePlugin):
     def send_bitpost_request(self, dialog, invoice):
         window = get_parent_main_window(dialog)
 
-        cancelled, is_send, password, txs, target, delay = dialog.run()
+        cancelled, is_send, password, txs, target, delay, max_fees, max_size = dialog.run()
         if cancelled or not is_send:
             return
 
@@ -127,6 +125,8 @@ class Plugin(BasePlugin):
             window.logger.debug("****************************")
 
         window.logger.debug("transactions signed")
+        if len(raw_signed_txs) == 0:
+            return
         try:
             delay = delay.timestamp()
         except:
@@ -159,14 +159,16 @@ class Plugin(BasePlugin):
         if response['status'] == 'success':
             if len(invoice.message)>0:
                 invoice.message += "\n"
-            invoice.message += "{},{},{}".format(response['data']['url'], delay, target)
+            invoice.message += "{},{},{},{},{}".format(response['data']['url'], delay, target, max_fees, max_size)
 
             window.wallet.save_invoice(invoice)
 
             window.invoice_list.update()
-            self.bitpost_list.insert_invoice(invoice)
+            self.bitpost_list.insert_bitpost(invoice.time,invoice.message)
             window.do_clear()
-            
+        elif response['status'] == 'fail':
+            import json
+            self.window.show_error(str(response), parent=self.window)  
 
     @hook
     def load_wallet(self, wallet, main_window):
@@ -220,5 +222,5 @@ class Plugin(BasePlugin):
         button = EnterButton(_("Pay with Bitpost..."),lambda: self.display_bitpost(grid))
         grid.addWidget(button,6,5)
         button.show()
-
+    
     
