@@ -44,7 +44,7 @@ class Plugin(BasePlugin):
         
     def display_bitpost(self,dialog):
         self.window = window = get_parent_main_window(dialog)
-        print(dir(window.wallet))
+
         invoice = window.read_invoice()       
         if not invoice:
             self.window.logger.exception("BitPostPlugin: Invoice is Null")
@@ -54,36 +54,8 @@ class Plugin(BasePlugin):
         window.invoice_list.update()
         window.do_clear()
 
-        tinputs = window.get_coins(nonlocal_only=True)
-        inputs=[]
-        history=window.wallet.get_full_history().values()
-
-        print(dir(history))
-        for i in tinputs:
-            #print(dir(i))
-
-            found=False
-            ihash=i.to_json()['prevout_hash']
-            for h in history:
-
-
-                if h['confirmations'] == 0:
-                    tx= window.wallet.db.get_transaction(h['txid'])
-                    tx_inputs=tx.inputs()
-                    for txin in tx_inputs:
-                        thash=txin.to_json()['prevout_hash']
-                        if ihash == thash:
-                            found=True
-                
-            if not found:
-                print("append",i.to_json())
-                inputs.append(i)
-            else:
-                pass
-                #print("-----FOUND---------",i.to_json())
-
-        for i in inputs:
-            print(i.to_json())
+        inputs = window.get_coins(nonlocal_only=True)
+        
         outputs = invoice.outputs
 
 

@@ -198,17 +198,22 @@ class ConfirmTxDialog(WindowModalDialog):
 
     def prepare_txs(self):
         try:
+            print('prepare txs')
             self.prepare_txs_by_bumping_fee()
         except CannotBumpFee as ex:
+            print("cannot bump fee",ex)
             self.prepare_txs_manually()
+        except Exception as e:
+            print(e)
 
     def prepare_txs_manually(self):
+        print('prepare tx manually')
         max_fee = int(200*self.calculate_max_feerate(200, self.fee_combo.currentText()))
         highest_fee_tx = self.make_tx(max_fee)
 
-        self.max_size = est_size = highest_fee_tx.estimated_size()
-        self.max_fees = max_fee = int(est_size * self.calculate_max_feerate(est_size, self.fee_combo.currentText()))
-        highest_fee_tx = self.make_tx(max_fee)
+        self.imax_size = est_size = highest_fee_tx.estimated_size()
+        self.imax_fees = max_fee = int(est_size * self.calculate_max_feerate(est_size, self.fee_combo.currentText()))
+
 
         can_be_change = lambda o: self.main_window.wallet.is_change(o.address) and self.main_window.wallet.is_mine(o.address)
         change_index = max([i for i in range(len(highest_fee_tx.outputs())) if can_be_change(highest_fee_tx.outputs()[i])])
@@ -228,10 +233,9 @@ class ConfirmTxDialog(WindowModalDialog):
 
     def prepare_txs_by_bumping_fee(self):
         try:
-            base_tx = self.make_tx(1)
+            base_tx = self.make_tx(0)
             est_size = base_tx.estimated_size()
             feerates = self.get_feerates(est_size)
-
             base_tx.set_rbf(True)
             base_tx.serialize_to_network()
             for fee in feerates:
@@ -245,10 +249,12 @@ class ConfirmTxDialog(WindowModalDialog):
         except NotEnoughFunds:
             self.not_enough_funds = True
             self.txs = [] 
+            print("not enought funds")
             return
         except NoDynamicFeeEstimates:
             self.no_dynfee_estimates = True
             self.txs = []
+            print("no dynamic fee estimation")
             try:            
                 self.txs = [self.make_tx(0)]
             except BaseException:
@@ -256,10 +262,12 @@ class ConfirmTxDialog(WindowModalDialog):
         except InternalAddressCorruption as e:
             self.txs = []
             self.main_window.show_error(str(e))
+            print("Internal address corruption")
             return
         except BitpostDownException:
             self.main_window.show_error(_("Fee Rates Service Not Available"), parent=self)
             self.is_send = False
+            print("bitpost down")
             return
         except Exception as e:
             self.txs = []
@@ -271,10 +279,13 @@ class ConfirmTxDialog(WindowModalDialog):
         inputs=tx.inputs()
         coco=[]
         for c in self.inputs:
+
             if c not in inputs:
                 
                 coco.append(c)
         try:
+
+            
             self.main_window.logger.debug(str(new_fee) + "bump fee method 1")
             tx_out= self.main_window.wallet._bump_fee_through_coinchooser(
                 tx=tx,
@@ -289,9 +300,10 @@ class ConfirmTxDialog(WindowModalDialog):
         return tx_out
         
     def make_tx(self, fee_est):
-
-        return self.main_window.wallet.make_unsigned_transaction(
+        tx = self.main_window.wallet.make_unsigned_transaction(
             coins=self.inputs,
             outputs=self.outputs,
             fee=fee_est,
             is_sweep=self.is_sweep)
+ 
+        return tx
