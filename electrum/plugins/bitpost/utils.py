@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import (QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QCheckBox,QLineEdit, QComboBox)
 from electrum.gui.qt.util import (Buttons, CloseButton, OkButton, WindowModalDialog, get_parent_main_window)
+#from PyQt5.QtCore import QString
 from electrum.i18n import _
 import re
 
@@ -72,21 +73,29 @@ def create_settings_window(small_window):
     advanced_settings_title.addStretch()
     vbox.addLayout(advanced_settings_title)
 
+    telegram_reminder=QLabel(_("<b>Remember to start <a href='https:/t.me/bitpostbot'>@BitpostBot</a></b>"))
+    telegram_reminder.setVisible(True if window.config.get('bitpost_notification_platform')=='Telegram' else False)
+    telegram_reminder.setOpenExternalLinks(True)
+    
     platform_address = QHBoxLayout()
-
     platform_address.addWidget(QLabel("Platform"))
     platform_combo = QComboBox()
-    fee_combo_values = ['None', 'Email', 'Twitter']
+    fee_combo_values = ['None', 'Email', 'Twitter','Telegram']
     platform_combo.addItems(fee_combo_values)
     platform_combo.setCurrentText(window.config.get('bitpost_notification_platform'))
+    platform_combo.currentTextChanged.connect(lambda: telegram_reminder.setVisible(True) if platform_combo.currentText()=='Telegram' else telegram_reminder.setVisible(False))
+    
     platform_address.addWidget(platform_combo)
-
+    
     platform_address.addWidget(QLabel("Address/handle"))
     vbox.addLayout(platform_address)
     address_input = QLineEdit()
     address_input.setText(window.config.get('bitpost_notification_address', ''))
     platform_address.addWidget(address_input)
+    
 
+    vbox.addWidget(telegram_reminder)
+    
     subscription_title = QHBoxLayout()
     subscription_title.addWidget(QLabel("Subscriptions"))
     subscriptions_help = QPushButton("?")
@@ -164,7 +173,9 @@ def create_settings_window(small_window):
     window.config.set_key('bitpost_max_fee_unit', fee_combo.currentText())
     delay = 1 if broadcast_policy_combo.currentText() == 'Allow delay of first broadcast' else 0
     window.config.set_key('bitpost_delay', delay)
-    window.config.set_key('bitpost_notification_platform', platform_combo.currentText())
+    platform_text = platform_combo.currentText()
+
+    window.config.set_key('bitpost_notification_platform', platform_text)
 
     subscriptions = []
     if overdue_checkbox.isChecked():
@@ -198,6 +209,7 @@ def create_settings_window(small_window):
     window.config.set_key('bitpost_notification_address', address_input.text())
 
 
+    
 def valid_address(platform, address):
     if platform.lower() == 'none':
         return True

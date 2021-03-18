@@ -23,6 +23,9 @@ class Plugin(BasePlugin):
     def __init__(self, parent, config, name):
         BasePlugin.__init__(self, parent, config, name)
         self.wallets=set()
+        self.parent = parent
+        self.config = config
+        self.name = name
         
     def requires_settings(self):
         return True
@@ -43,11 +46,13 @@ class Plugin(BasePlugin):
             pass
         
     def display_bitpost(self,dialog):
-        self.window = window = get_parent_main_window(dialog)
-
+        window = get_parent_main_window(dialog)
+        if self.config.get('batch_rbf', False):
+            window.show_error(_("Warning: batch rbf transaction is not supported by bitpost plugin"), parent=self.window)
+            
         invoice = window.read_invoice()       
         if not invoice:
-            self.window.logger.exception("BitPostPlugin: Invoice is Null")
+            window.logger.exception("BitPostPlugin: Invoice is Null")
             return
 
         window.wallet.save_invoice(invoice)
@@ -170,13 +175,16 @@ class Plugin(BasePlugin):
 
         self.bitpost_list = BitPostList(self.window)
         self.window.tabs.addTab(self.window.create_list_tab(self.bitpost_list), read_QIcon("tab_bitpost.png"), _('BitPost'))
-        
-        
-        
+
+        if self.config.get('batch_rbf', False):
+            self.window.show_error(_("Warning: batch rbf transaction is not supported by bitpost"), parent=self.window) 
+
     @hook
     def close_wallet(self, wallet):
         self.wallet=None
-
+    @hook
+    def init_qt(self,gui_obj):
+        pass
     @hook
     def close_settings_dialog(self):
         has_fx = self.window.fx and self.window.fx.is_enabled()
@@ -188,6 +196,10 @@ class Plugin(BasePlugin):
         if has_fx and has_different_fx:
             self.config.set_key('bitpost_max_fee_unit', self.default_max_fee_unit)
             self.config.set_key('bitpost_max_fee', self.default_max_fee)
+            
+        if self.config.get('batch_rbf', False):
+            self.window.show_error(_("Warning: batch rbf transaction is not supported by bitpost"), parent=self.window)
+
 
     @hook
     def create_send_tab(self, grid):
